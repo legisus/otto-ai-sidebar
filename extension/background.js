@@ -108,6 +108,15 @@ async function handle(cmd, p) {
       return { ok: true };
     }
 
+    case "activateTab": {
+      // Focus a tab and bring its window to the front.
+      const tab = await chrome.tabs.update(p.tabId, { active: true });
+      if (tab && tab.windowId != null) {
+        await chrome.windows.update(tab.windowId, { focused: true });
+      }
+      return { ok: true, tabId: p.tabId, windowId: tab && tab.windowId };
+    }
+
     case "closeTab":
       await chrome.tabs.remove(p.tabId);
       return { ok: true };
