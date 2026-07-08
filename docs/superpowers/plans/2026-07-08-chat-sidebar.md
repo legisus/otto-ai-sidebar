@@ -16,7 +16,9 @@
 - All provider network `fetch` calls happen in the **background service worker** (host_permissions bypass CORS); the side-panel page makes none.
 - Reuse the existing `handle(cmd, params)` in `extension/background.js` for tool execution — do not duplicate browser-control logic.
 - Agent loop hard cap: **25 tool turns**.
+- **User-interruptible:** the agent loop accepts an `AbortSignal`; a Stop control aborts a run mid-flight (checked between turns and passed to `fetch`).
 - Default provider/model: **Claude / `claude-sonnet-5`**.
+- **Design tokens (cockpit / "amber signal on graphite"):** `--ink #16181D`, `--surface #1E2128`, `--paper #F7F8F9`, `--signal #F5A524`, `--muted #8A8F98`. One accent (amber) only. Two type voices: system **sans** for conversation, **monospace** for the action trace. Signature: the amber "route line" gutter on the action trace + a header status dot that pulses while driving. Respect `prefers-reduced-motion`; `aria-live` on the log; visible focus.
 - Tool set (identical across providers): `navigate, eval, click, insertText, key, listTabs, newTab, activateTab, screenshot, pdf, download, closeTab`.
 - Provider hosts for `host_permissions`: `api.anthropic.com`, `generativelanguage.googleapis.com`, `api.openai.com`, `api.deepseek.com`, `api.mistral.ai`, `api.groq.com`.
 - Commit after every task. Branch: work on `v0.2-chat-sidebar` (not `main`).
@@ -704,7 +706,7 @@ git commit -m "feat(otto): Gemini provider adapter"
 
 **Interfaces:**
 - Consumes: an adapter (`{stream}`) and a tool executor, both injected.
-- Produces: `export async function runAgent({ adapter, model, system, tools, vision, history, execTool, onText, onToolStart, onToolResult, maxTurns = 25 })`. `history` is the internal-format message array (mutated/returned). `execTool(name, input)` → `{content:string, image?:string}` (image = base64 PNG for screenshot/pdf, else undefined). Returns `{ history, stopReason }`. A "turn" is one adapter round; if a round yields tool calls, they are executed and the loop continues; otherwise it ends.
+- Produces: `export async function runAgent({ adapter, model, system, tools, vision, history, execTool, onText, onToolStart, onToolResult, maxTurns = 25, signal })`. `history` is the internal-format message array (mutated/returned). `execTool(name, input)` → `{content:string, image?:string}` (image = base64 PNG for screenshot/pdf, else undefined). `signal` is an optional `AbortSignal`; when aborted the loop stops between turns and returns `stopReason:"stopped"`. Returns `{ history, stopReason }`. A "turn" is one adapter round; if a round yields tool calls, they are executed and the loop continues; otherwise it ends. The `signal` is forwarded to `adapter.stream({..., signal})` and thence to `fetch`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -781,18 +783,20 @@ Expected: FAIL — cannot find module `../extension/agent.js`.
 // extension/agent.js
 // Provider-agnostic tool-use loop. No chrome.* — adapter and execTool are injected.
 
-export async function runAgent({ adapter, model, system, tools, vision, history, execTool, onText, onToolStart, onToolResult, maxTurns = 25 }) {
+export async function runAgent({ adapter, model, system, tools, vision, history, execTool, onText, onToolStart, onToolResult, maxTurns = 25, signal }) {
   let turns = 0;
   for (;;) {
+    if (signal?.aborted) return { history, stopReason: "stopped" };
     const toolCalls = [];
     let stopReason = "end_turn";
-    for await (const ev of adapter.stream({ model, system, messages: history, tools, vision })) {
+    for await (const ev of adapter.stream({ model, system, messages: history, tools, vision, signal })) {
       if (ev.type === "text") onText(ev.text);
       else if (ev.type === "toolCall") toolCalls.push(ev);
       else if (ev.type === "done") stopReason = ev.stopReason;
     }
 
     if (toolCalls.length === 0) return { history, stopReason };
+    if (signal?.aborted) return { history, stopReason: "stopped" };
 
     history.push({ role: "assistant", toolCalls: toolCalls.map(tc => ({ id: tc.id, name: tc.name, input: tc.input })) });
 
@@ -809,6 +813,24 @@ export async function runAgent({ adapter, model, system, tools, vision, history,
   }
 }
 ```
+
+Also append an abort test to `test/agent.test.js`:
+
+```js
+test("runAgent stops when the signal is aborted", async () => {
+  const ac = new AbortController();
+  const ad = { async *stream() { ac.abort(); yield { type: "toolCall", id: "t1", name: "listTabs", input: {} }; yield { type: "done", stopReason: "tool_use" }; } };
+  const res = await runAgent({
+    adapter: ad, model: "m", system: "", tools: TOOLS, vision: true,
+    history: [{ role: "user", text: "go" }],
+    execTool: async () => ({ content: "[]" }),
+    onText: () => {}, onToolStart: () => {}, onToolResult: () => {}, signal: ac.signal,
+  });
+  assert.equal(res.stopReason, "stopped");
+});
+```
+
+Each adapter's `stream({...signal})` forwards `signal` to its `fetchImpl(url, { ..., signal })` so an in-flight request is cancelled too. Add `signal` to the destructured params and the fetch options in `claude.js`, `gemini.js`, and `openai-compat.js`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -933,19 +955,22 @@ const SYSTEM = "You are Otto, an assistant that controls the user's web browser 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "otto-chat") return;
   const history = [];
+  let ac = null; // current run's AbortController
   port.onMessage.addListener(async (msg) => {
+    if (msg.type === "stop") { ac?.abort(); return; }
     if (msg.type !== "user") return;
     try {
       const s = await getSettings();
       const hit = findModel(s.provider, s.endpoint, s.model);
-      if (!hit) { port.postMessage({ type: "error", error: "No model selected." }); return; }
+      if (!hit) { port.postMessage({ type: "error", error: "No model selected — open settings (⚙)." }); return; }
       const apiKey = s.apiKeys[s.provider];
-      if (!apiKey) { port.postMessage({ type: "error", error: `No API key for ${s.provider}. Open settings.` }); return; }
+      if (!apiKey) { port.postMessage({ type: "error", error: `I don't have an API key for ${hit.provider.label} yet — add one in settings (⚙).` }); return; }
       const adapter = makeAdapter(s.provider, hit.endpoint, apiKey);
       history.push({ role: "user", text: msg.text });
+      ac = new AbortController();
       const res = await runAgent({
         adapter, model: s.model, system: SYSTEM, tools: TOOLS, vision: hit.model.vision, history,
-        execTool,
+        execTool, signal: ac.signal,
         onText: (t) => port.postMessage({ type: "text", text: t }),
         onToolStart: (tc) => port.postMessage({ type: "toolStart", name: tc.name, input: tc.input }),
         onToolResult: (tc) => port.postMessage({ type: "toolResult", name: tc.name }),
@@ -953,7 +978,7 @@ chrome.runtime.onConnect.addListener((port) => {
       port.postMessage({ type: "done", stopReason: res.stopReason });
     } catch (e) {
       port.postMessage({ type: "error", error: String(e.message || e) });
-    }
+    } finally { ac = null; }
   });
 });
 ```
@@ -1057,23 +1082,40 @@ git commit -m "feat(otto): manifest v0.2 — side panel, provider hosts, module 
 
 ```html
 <!doctype html>
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="sidepanel.css"></head>
+<html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="sidepanel.css"></head>
 <body>
   <header id="bar">
-    <select id="model"></select>
-    <button id="gear" title="Settings">⚙</button>
+    <span id="dot" title="Idle" aria-hidden="true"></span>
+    <span id="mark">Otto</span>
+    <select id="model" aria-label="Model"></select>
+    <button id="gear" class="icon" title="Settings" aria-label="Settings">⚙</button>
   </header>
-  <section id="onboarding" hidden>
-    <h2>Welcome to Otto</h2>
-    <p>Pick a provider and paste an API key. <a id="getkey" target="_blank">Get a key ↗</a></p>
-    <select id="ob-provider"></select>
-    <input id="ob-key" type="password" placeholder="API key" autocomplete="off">
-    <div class="row"><button id="ob-test">Test key</button><span id="ob-status"></span></div>
-    <button id="ob-save">Save & start</button>
-    <p class="hint">Your key is stored locally in this browser and only sent to the provider you choose. Otto acts autonomously in your tabs.</p>
+
+  <section id="onboarding" hidden aria-label="Setup">
+    <h2>Meet Otto</h2>
+    <p class="lede">Otto drives your browser for you. Pick a provider and add an API key to begin.</p>
+    <label>Provider<select id="ob-provider"></select></label>
+    <label>API key <a id="getkey" target="_blank" rel="noopener">Get a key ↗</a>
+      <input id="ob-key" type="password" placeholder="Paste your key" autocomplete="off" spellcheck="false"></label>
+    <div class="row"><button id="ob-test" class="ghost">Test key</button><span id="ob-status" role="status"></span></div>
+    <button id="ob-save" class="primary">Save & start</button>
+    <p class="hint">Your key is stored only in this browser and sent only to the provider you pick. Otto acts on your open tabs on its own — you can stop it any time.</p>
   </section>
-  <main id="log"></main>
-  <footer><textarea id="input" rows="2" placeholder="Ask Otto to do something…"></textarea><button id="send">Send</button></footer>
+
+  <main id="log" aria-live="polite" aria-label="Conversation">
+    <div id="empty" class="empty">
+      <p>Ask Otto to do something in your browser. For example:</p>
+      <button class="example">Summarize the page in my active tab</button>
+      <button class="example">List my open tabs and group them by site</button>
+      <button class="example">Open news.ycombinator.com and read me the top story</button>
+    </div>
+  </main>
+
+  <footer>
+    <textarea id="input" rows="2" placeholder="Ask Otto to do something…" aria-label="Message"></textarea>
+    <button id="send" class="primary" aria-label="Send">Send</button>
+    <button id="stop" class="danger" hidden aria-label="Stop">Stop</button>
+  </footer>
   <script type="module" src="sidepanel.js"></script>
 </body></html>
 ```
@@ -1081,21 +1123,68 @@ git commit -m "feat(otto): manifest v0.2 — side panel, provider hosts, module 
 - [ ] **Step 2: Write `sidepanel.css`**
 
 ```css
-:root { color-scheme: light dark; font: 14px/1.5 system-ui, sans-serif; }
-body { margin: 0; display: flex; flex-direction: column; height: 100vh; }
-#bar { display: flex; gap: 8px; padding: 8px; border-bottom: 1px solid #8884; align-items: center; }
-#model { flex: 1; }
-#log { flex: 1; overflow-y: auto; padding: 10px; }
-.msg { margin: 8px 0; white-space: pre-wrap; }
-.msg.user { font-weight: 600; }
-.msg.tool { opacity: .7; font-size: 12px; font-family: ui-monospace, monospace; }
-.msg.error { color: #c00; }
-footer { display: flex; gap: 6px; padding: 8px; border-top: 1px solid #8884; }
-#input { flex: 1; resize: none; }
-#onboarding { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
-#onboarding input, #onboarding select { padding: 8px; }
-.hint { color: #888; font-size: 12px; }
-.row { display: flex; gap: 8px; align-items: center; }
+/* Otto — cockpit: amber signal on graphite. One accent (amber). Two type voices. */
+:root {
+  color-scheme: light dark;
+  --signal: #F5A524; --signal-soft: #F5A52433;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", monospace;
+  --ink: #16181D; --surface: #1E2128; --paper: #F7F8F9;
+  --bg: var(--paper); --panel: #FFFFFF; --text: var(--ink); --muted: #6B7280; --line: #E3E6EA;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: var(--ink); --panel: var(--surface); --text: #E6E8EB; --muted: #8A8F98; --line: #2A2E37; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; height: 100vh; display: flex; flex-direction: column;
+  font: 14px/1.55 var(--sans); background: var(--bg); color: var(--text); }
+
+#bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+#mark { font-weight: 700; letter-spacing: .02em; }
+#dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+#dot.live { background: var(--signal); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 var(--signal-soft); } 50% { box-shadow: 0 0 0 5px transparent; } }
+@media (prefers-reduced-motion: reduce) { #dot.live { animation: none; } }
+#model { margin-left: auto; max-width: 55%; background: transparent; color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }
+.icon { background: none; border: 0; color: var(--muted); font-size: 15px; cursor: pointer; padding: 4px; }
+.icon:hover { color: var(--text); }
+
+#log { flex: 1; overflow-y: auto; padding: 12px; }
+.msg { margin: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.user { color: var(--text); font-weight: 600; }
+.msg.user::before { content: "You"; display: block; font: 600 11px var(--mono); color: var(--muted); letter-spacing: .06em; }
+.msg.assistant::before { content: "Otto"; display: block; font: 600 11px var(--mono); color: var(--signal); letter-spacing: .06em; }
+.msg.error { color: #E5484D; }
+
+/* the route line: an amber gutter threading Otto's actions */
+.trace { margin: 8px 0 8px 4px; padding-left: 14px; border-left: 2px solid var(--signal); }
+.trace .act { font: 12px/1.7 var(--mono); color: var(--muted); position: relative; }
+.trace .act::before { content: "•"; color: var(--signal); position: absolute; left: -18px; }
+
+.empty { color: var(--muted); padding: 8px 2px; }
+.empty .example { display: block; width: 100%; text-align: left; margin: 6px 0; padding: 8px 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font: inherit; cursor: pointer; }
+.empty .example:hover { border-color: var(--signal); }
+
+footer { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
+#input { flex: 1; resize: none; font: inherit; padding: 8px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel); color: var(--text); }
+button.primary { background: var(--signal); color: #16181D; border: 0; border-radius: 8px; padding: 0 14px; font: 600 14px var(--sans); cursor: pointer; }
+button.danger { background: #E5484D; color: #fff; border: 0; border-radius: 8px; padding: 0 14px; font: 600 14px var(--sans); cursor: pointer; }
+button.ghost { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; color: var(--text); cursor: pointer; }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+#onboarding { padding: 18px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+#onboarding h2 { margin: 0; }
+#onboarding .lede { margin: 0; color: var(--muted); }
+#onboarding label { display: flex; flex-direction: column; gap: 4px; font: 600 12px var(--sans); }
+#onboarding input, #onboarding select { padding: 8px; font: 14px var(--sans); background: var(--panel);
+  color: var(--text); border: 1px solid var(--line); border-radius: 8px; }
+#getkey { font-weight: 400; color: var(--signal); text-decoration: none; }
+.hint { color: var(--muted); font-size: 12px; }
+.row { display: flex; gap: 10px; align-items: center; }
+#ob-status { color: var(--muted); font-size: 12px; }
 ```
 
 - [ ] **Step 3: Write `sidepanel.js`**
@@ -1106,67 +1195,94 @@ import { PROVIDERS, findModel } from "./providers/registry.js";
 
 const $ = (id) => document.getElementById(id);
 const log = $("log");
-function add(cls, text) { const d = document.createElement("div"); d.className = `msg ${cls}`; d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; }
 
-// --- model dropdown (flattened provider/endpoint/model) ---
-function modelOptions() {
-  const opts = [];
-  for (const p of PROVIDERS) for (const e of p.endpoints) for (const m of e.models)
-    opts.push({ value: `${p.id}|${e.id}|${m.id}`, label: `${p.label} · ${m.label}` });
-  return opts;
+// Plain-language action labels — name what the user recognizes, not the tool call.
+function actionLabel(name, input = {}) {
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
+  switch (name) {
+    case "newTab": return `opened ${host(input.url)}`;
+    case "navigate": return `went to ${host(input.url)}`;
+    case "activateTab": return "switched tabs";
+    case "closeTab": return "closed a tab";
+    case "listTabs": return "checked your open tabs";
+    case "eval": return "read the page";
+    case "click": return "clicked";
+    case "insertText": return "typed some text";
+    case "key": return `pressed ${input.key}`;
+    case "screenshot": return "took a screenshot";
+    case "pdf": return "saved the page as PDF";
+    case "download": return "downloaded a file";
+    default: return name;
+  }
 }
-function fillModelSelect(sel, current) {
-  sel.innerHTML = "";
-  for (const o of modelOptions()) { const el = document.createElement("option"); el.value = o.value; el.textContent = o.label; sel.appendChild(el); }
+
+function hideEmpty() { const e = $("empty"); if (e) e.remove(); }
+function add(cls, text) { hideEmpty(); const d = document.createElement("div"); d.className = `msg ${cls}`; d.textContent = text; log.appendChild(d); log.scrollTop = log.scrollHeight; return d; }
+function addAction(name, input) {
+  hideEmpty();
+  let trace = log.lastElementChild;
+  if (!trace || !trace.classList.contains("trace")) { trace = document.createElement("div"); trace.className = "trace"; log.appendChild(trace); }
+  const a = document.createElement("div"); a.className = "act"; a.textContent = actionLabel(name, input); trace.appendChild(a);
+  log.scrollTop = log.scrollHeight;
+}
+
+// --- header model dropdown (flattened provider/endpoint/model) ---
+function fillModelSelect(current) {
+  const sel = $("model"); sel.innerHTML = "";
+  for (const p of PROVIDERS) for (const e of p.endpoints) for (const m of e.models) {
+    const el = document.createElement("option"); el.value = `${p.id}|${e.id}|${m.id}`;
+    el.textContent = `${p.label.split(" ")[0]} · ${m.label}`; sel.appendChild(el);
+  }
   if (current) sel.value = current;
 }
-
 async function refreshHeader() {
   const s = await getSettings();
-  fillModelSelect($("model"), `${s.provider}|${s.endpoint}|${s.model}`);
+  fillModelSelect(`${s.provider}|${s.endpoint}|${s.model}`);
 }
-
 $("model").addEventListener("change", async () => {
   const [provider, endpoint, model] = $("model").value.split("|");
   await setSettings({ provider, endpoint, model });
 });
 
 // --- onboarding ---
-function fillProviderSelect() {
+function currentProvider() { return PROVIDERS.find(p => p.id === $("ob-provider").value); }
+function fillProviderSelect(selected) {
   const sel = $("ob-provider"); sel.innerHTML = "";
   for (const p of PROVIDERS) { const el = document.createElement("option"); el.value = p.id; el.textContent = p.label; sel.appendChild(el); }
+  if (selected) sel.value = selected;
 }
-function currentProvider() { return PROVIDERS.find(p => p.id === $("ob-provider").value); }
-$("ob-provider")?.addEventListener("change", () => { $("getkey").href = currentProvider().keyUrl; });
+function syncKeyLink() { $("getkey").href = currentProvider().keyUrl; }
+$("ob-provider").addEventListener("change", syncKeyLink);
 
-async function maybeOnboard() {
+async function openOnboarding() {
   const s = await getSettings();
-  if (s.apiKeys[s.provider]) return;
-  fillProviderSelect();
-  $("ob-provider").value = s.provider;
-  $("getkey").href = currentProvider().keyUrl;
+  fillProviderSelect(s.provider); syncKeyLink();
+  $("ob-key").value = ""; $("ob-status").textContent = "";
   $("onboarding").hidden = false;
 }
+async function maybeOnboard() { const s = await getSettings(); if (!s.apiKeys[s.provider]) await openOnboarding(); }
 
-$("ob-test").addEventListener("click", async () => {
+$("ob-test").addEventListener("click", () => {
   const p = currentProvider(); const key = $("ob-key").value.trim();
-  $("ob-status").textContent = "Testing…";
-  // A cheap validation: connect the port and send a trivial "say hi" turn is heavy;
-  // instead just check the key is non-empty and prefix-plausible.
-  if (!key || (p.keyPrefixHint && !key.startsWith(p.keyPrefixHint))) { $("ob-status").textContent = `Key should start with "${p.keyPrefixHint}"`; return; }
+  if (!key) { $("ob-status").textContent = "Enter a key first."; return; }
+  if (p.keyPrefixHint && !key.startsWith(p.keyPrefixHint)) { $("ob-status").textContent = `That doesn't look right — ${p.label} keys start with "${p.keyPrefixHint}".`; return; }
   $("ob-status").textContent = "Looks valid ✓";
 });
-
 $("ob-save").addEventListener("click", async () => {
   const p = currentProvider(); const key = $("ob-key").value.trim();
-  if (!key) { $("ob-status").textContent = "Enter a key first"; return; }
-  const endpoint = p.endpoints[0]; const model = endpoint.models[0];
+  if (!key) { $("ob-status").textContent = "Enter a key first."; return; }
+  const endpoint = p.endpoints[0], model = endpoint.models[0];
   await setSettings({ provider: p.id, endpoint: endpoint.id, model: model.id, apiKeys: { [p.id]: key } });
-  $("onboarding").hidden = true;
-  await refreshHeader();
+  $("onboarding").hidden = true; await refreshHeader();
 });
+$("gear").addEventListener("click", openOnboarding);
 
-$("gear").addEventListener("click", async () => { $("ob-key").value = ""; await maybeOnboard(); $("onboarding").hidden = false; });
+// --- run state ---
+function setRunning(on) {
+  $("dot").classList.toggle("live", on);
+  $("dot").title = on ? "Working…" : "Idle";
+  $("send").hidden = on; $("stop").hidden = !on;
+}
 
 // --- chat over the port ---
 let port, live;
@@ -1174,22 +1290,24 @@ function connect() {
   port = chrome.runtime.connect({ name: "otto-chat" });
   port.onMessage.addListener((m) => {
     if (m.type === "text") { if (!live) live = add("assistant", ""); live.textContent += m.text; log.scrollTop = log.scrollHeight; }
-    else if (m.type === "toolStart") add("tool", `→ ${m.name}(${JSON.stringify(m.input)})`);
-    else if (m.type === "toolResult") { live = null; }
-    else if (m.type === "done") { live = null; }
-    else if (m.type === "error") add("error", m.error);
+    else if (m.type === "toolStart") { live = null; addAction(m.name, m.input); }
+    else if (m.type === "done") { setRunning(false); live = null; if (m.stopReason === "stopped") add("assistant", "Stopped."); }
+    else if (m.type === "error") { setRunning(false); live = null; add("error", m.error); }
   });
-  port.onDisconnect.addListener(() => { port = null; });
+  port.onDisconnect.addListener(() => { port = null; setRunning(false); });
 }
 
-function send() {
-  const text = $("input").value.trim(); if (!text) return;
+function send(text) {
+  text = (text ?? $("input").value).trim(); if (!text) return;
   $("input").value = ""; add("user", text); live = null;
   if (!port) connect();
+  setRunning(true);
   port.postMessage({ type: "user", text });
 }
-$("send").addEventListener("click", send);
+$("send").addEventListener("click", () => send());
+$("stop").addEventListener("click", () => { port?.postMessage({ type: "stop" }); });
 $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+log.addEventListener("click", (e) => { if (e.target.classList.contains("example")) send(e.target.textContent); });
 
 refreshHeader().then(maybeOnboard);
 ```
