@@ -22,7 +22,7 @@ Goal: **install → pick a provider → paste API key → chat.** No Node, no se
 
 | Question | Decision |
 |---|---|
-| Who is on the other end | Standalone assistant calling a hosted LLM API through a **provider adapter** (Claude + Gemini at launch) |
+| Who is on the other end | Standalone assistant calling a hosted LLM API through a **provider adapter**. Three adapters at launch: **Claude** (native), **Gemini** (native), **OpenAI-compatible** (one adapter, many endpoints: OpenAI, DeepSeek, Mistral, Groq, …). |
 | Where the agent loop + key live | In the extension; **the background service worker owns all provider API calls** (host_permissions bypass website CORS — see Provider Abstraction). Keys in `chrome.storage.local`. |
 | UI surface | Chrome **side panel** (`chrome.sidePanel`) |
 | Autonomy | **Fully autonomous** — no per-tool confirmation |
@@ -84,6 +84,19 @@ the provider registry (host added to `host_permissions`, models listed in the pi
   key via `x-goog-api-key`. Maps tools → `functionDeclarations`, tool results →
   `functionResponse` parts, screenshots → `inlineData` image parts, `tool_use` →
   `functionCall`. Multimodal + function calling + SSE are all supported.
+- **OpenAI-compatible adapter** — one adapter, many endpoints. `POST {baseURL}/chat/completions`
+  with `stream:true`, `Authorization: Bearer {key}`, OpenAI `tools`/`tool_calls` schema,
+  vision via `image_url` parts (data URI). A small **endpoint registry** supplies
+  `{name, baseURL, models[], vision:bool}` per provider — OpenAI (`api.openai.com/v1`),
+  DeepSeek (`api.deepseek.com/v1`), Mistral (`api.mistral.ai/v1`), Groq
+  (`api.groq.com/openai/v1`), and more are added by appending a row + a `host_permissions`
+  entry. The user picks an endpoint, then a model within it.
+
+**Vision capability is per-model.** Vision-capable brains (all Claude, all Gemini, OpenAI
+GPT-4.1/5.x, Mistral Pixtral, DeepSeek-V) receive screenshots as image blocks. A
+text-only model still works — the adapter advertises `vision:false`, the agent then
+**skips image blocks and relies on `eval` (DOM text) instead of `screenshot`**. The panel
+notes "this model can't see screenshots" so the degrade is visible, not silent.
 
 The `tools` array is built once from the browser-command registry and translated per
 adapter — the browser-control commands (`navigate, eval, click, insertText, key,
@@ -100,11 +113,11 @@ providers; only their schema serialization differs.
   - Calls `adapter.stream(...)`; forwards text deltas to the panel over the port.
   - On a `toolCall`: runs `handle(cmd, params)` in-process → appends the result (screenshots/pdf as image blocks) → continues.
   - Loops until the adapter yields `done`; **hard cap ~25 tool turns** to prevent runaway.
-- **`providers/claude.js`, `providers/gemini.js`** — the two launch adapters (interface in Provider Abstraction above). New providers drop in here.
+- **`providers/claude.js`, `providers/gemini.js`, `providers/openai-compat.js`** — the launch adapters (interface in Provider Abstraction above). `providers/registry.js` lists providers, endpoints, models, and per-model `vision` flags — the single edit-point for adding models.
 - **`onboarding.js` (+ section in `sidepanel.html`)** — first-run welcome: **provider picker**, API-key field, per-provider "Get a key" link (console.anthropic.com / aistudio.google.com), "Test key" button (one cheap validating call), model default. Re-openable via ⚙.
 
 ### Modified files
-- **`manifest.json`** — add `"sidePanel"` permission and `side_panel.default_path`; add each provider host to `host_permissions` (`https://api.anthropic.com/*`, `https://generativelanguage.googleapis.com/*`); add icons (16/32/48/128).
+- **`manifest.json`** — add `"sidePanel"` permission and `side_panel.default_path`; add each provider host to `host_permissions` (`https://api.anthropic.com/*`, `https://generativelanguage.googleapis.com/*`, `https://api.openai.com/*`, `https://api.deepseek.com/*`, `https://api.mistral.ai/*`, `https://api.groq.com/*`); add icons (16/32/48/128).
 - **`background.js`** — add the `chrome.runtime` router (onMessage + onConnect port) and host the agent loop; open the side panel on action-icon click (`chrome.sidePanel.setPanelBehavior`). Reuses existing `handle()`.
 - **`extension/options.*`** — add provider picker + per-provider API-key fields (shared storage with onboarding) + model selector (the token/port/allowlist fields for v0.1 server mode stay, visually separated as "Advanced / terminal bridge").
 
@@ -120,25 +133,29 @@ Prices are per 1M tokens (input/output), July 2026, and drift — treat as guida
 the registry easy to edit. None of these are reachable via a consumer subscription; all
 need an API key. Gemini Flash/Flash-Lite have a free API tier.
 
-**Launch providers:**
+**Launch model registry** (V = vision-capable, gets screenshots; prices $/1M in·out):
 
-| Provider · model | $/1M in·out | Notes |
-|---|---|---|
-| **Claude Sonnet 5** *(default)* | $3 / $15 (intro $2/$10) | Best tool-use + vision balance; strong agentic. |
-| Claude Opus 4.8 | $5 / $25 | Hardest multi-step tasks. |
-| Claude Haiku 4.5 | $1 / $5 | Cheapest Claude; quick tab wrangling. |
-| Claude Fable 5 | $10 / $50 | Max capability, premium. |
-| **Gemini 3.5 Flash** | $1.50 / $9 | Best cheap-capable agentic pick; multimodal. |
-| Gemini 3.1 Flash-Lite | $0.25 / $1.50 | **Has a free tier** — zero-cost option for light use. |
-| Gemini 2.5 Flash | $0.15 / $0.60 | Very cheap fallback. |
-| Gemini 3.1 Pro | $2 / $12 (paid only) | 2M context; heavier jobs. |
+| Provider · model | $ in·out | V | Adapter | Notes |
+|---|---|:--:|---|---|
+| **Claude Sonnet 5** *(default)* | $3 / $15 (intro $2/$10) | ✅ | claude | Best tool-use + vision balance. |
+| Claude Opus 4.8 | $5 / $25 | ✅ | claude | Hardest multi-step tasks. |
+| Claude Haiku 4.5 | $1 / $5 | ✅ | claude | Cheapest Claude; quick tab work. |
+| Claude Fable 5 | $10 / $50 | ✅ | claude | Max capability, premium. |
+| **Gemini 3.5 Flash** | $1.50 / $9 | ✅ | gemini | Cheap + capable agentic; multimodal. |
+| Gemini 3.1 Flash-Lite | $0.25 / $1.50 | ✅ | gemini | **Free API tier** — zero-cost light use. |
+| Gemini 2.5 Flash | $0.15 / $0.60 | ✅ | gemini | Very cheap fallback. |
+| Gemini 3.1 Pro | $2 / $12 (paid) | ✅ | gemini | 2M context; heavier jobs. |
+| OpenAI GPT-5.x (flagship) | (varies) | ✅ | openai-compat | Strong agentic + vision. |
+| OpenAI GPT-4.1 Nano | ~$0.10 / $0.40 | ✅ | openai-compat | Cheap OpenAI vision model. |
+| DeepSeek V4 Flash | $0.14 / $0.28 | ❌ | openai-compat | **Cheapest overall**; text-only → DOM-mode. |
+| DeepSeek V3 | $0.27 / $1.10 | ❌ | openai-compat | Cheap; text-only. |
+| Mistral (Pixtral) | ~$0.15 / $0.60 | ✅ | openai-compat | Cheap vision-capable. |
+| Mistral Small | ~$0.10 / $0.30 | ❌ | openai-compat | Ultra-cheap; text-only. |
+| Groq (Llama/OSS, fast) | free tier + low | mixed | openai-compat | Fastest inference; **free tier**. |
 
-**Candidate future adapters (cheap API, add via the adapter interface):**
-DeepSeek V4 Flash ($0.14/$0.28 — cheapest overall), DeepSeek V3 ($0.27/$1.10),
-Mistral Small (~$0.10/$0.30), MiniMax M3 ($0.60/$2.40, strong coding), Z.AI GLM-5.2,
-Qwen3.x, and OpenAI (GPT-4.1 Nano ~$0.10 in; GPT-5.x flagships). All support tool use +
-vision now; each needs its host in `host_permissions` and a wire-format adapter. OpenAI
-is OpenAI-compatible, so an "openai-compatible" adapter would cover several at once.
+Text-only rows (❌) still drive the browser via `eval`/DOM but can't see screenshots
+(the panel says so). MiniMax M3, Z.AI GLM-5.2, and Qwen3.x are trivially addable to the
+`openai-compat` registry later — same adapter, one row each.
 
 **Not a brain:** Perplexity (Sonar) is search/answer-oriented — tool-calling + vision
 support is thin and its OpenAI-compatible endpoint tends to CORS-block; unsuitable as the
@@ -179,9 +196,10 @@ API tier via Google AI Studio.
 - **`test/agent.test.js`** (new, offline): mock each adapter to yield a scripted
   `toolCall` → `done` sequence; assert `agent.js` dispatches the right `handle(cmd,params)`,
   appends the tool result, and terminates. Assert the 25-turn cap and an API-error path.
-- **`test/adapters.test.js`** (new, offline): feed each adapter a canned provider stream
-  and assert it normalizes to Otto's `{textDelta|toolCall|done}` shape, and that a tool
-  call round-trips into the provider's tool-result format. Runs without network.
+- **`test/adapters.test.js`** (new, offline): feed each of the three adapters (claude,
+  gemini, openai-compat) a canned provider stream and assert it normalizes to Otto's
+  `{textDelta|toolCall|done}` shape, that a tool call round-trips into the provider's
+  tool-result format, and that a `vision:false` model gets image blocks stripped. No network.
 - **Tool execution** is already covered by `test/integration.sh` (15/15) — unchanged,
   since the side panel reuses `handle()`.
 - **Manual checklist** (in TEST-PLAN.md): "list my tabs", "open YouTube and play X",
@@ -195,13 +213,14 @@ API tier via Google AI Studio.
   list is already dynamic.
 - **Anthropic Agent Skills** (pptx/xlsx/docx/pdf) — server-side code-execution container
   + `code-execution` / `skills` betas. Additive as an opt-in.
-- **More provider adapters** — DeepSeek, OpenAI (+ an OpenAI-compatible adapter covering
-  several cheap providers at once), Mistral, MiniMax, Qwen, Z.AI. The adapter interface
-  and per-provider `host_permissions` make each a drop-in.
+- **More OpenAI-compatible endpoints** — MiniMax, Z.AI GLM, Qwen, and others are one
+  registry row + one `host_permissions` entry each; no new adapter code.
 - **Perplexity as a search *tool*** (not a brain) — surfaced to the active brain as a
   callable tool once the tool registry supports remote tools.
 
 ## Out of scope for v0.2
 
-Per-tool confirmation UI, conversation persistence across browser restarts, provider
-adapters beyond Claude + Gemini, and the terminal-bridge changes (v0.1 path is untouched).
+Per-tool confirmation UI, conversation persistence across browser restarts, adapter
+*types* beyond the three (claude / gemini / openai-compat), and the terminal-bridge
+changes (v0.1 path is untouched). Adding more OpenAI-compatible *endpoints* is in-scope
+(registry rows), just not exhaustively enumerated.
