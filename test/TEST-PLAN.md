@@ -58,3 +58,21 @@ Two layers:
 `protocol.test.js` — **4/4 PASS**.
 
 Re-run both after any change to `background.js`, `server.js`, or `cli.js`.
+
+## Chat sidebar (v0.2)
+
+**Offline suites** — `npm test` runs them all:
+- `tools.test.js` — tool registry shape.
+- `adapters.test.js` — provider registry + Claude/Gemini/OpenAI-compat stream normalization + vision-strip when `vision:false`.
+- `agent.test.js` — agent loop: tool round-trip, max-turns cap, tool-error recovery, AbortSignal stop.
+
+Last run: **16/16 PASS** (2026-07-08).
+
+**Manual checklist** (needs a real API key; load unpacked, open the side panel):
+- Onboarding appears on first run; "Test key" rejects a bad prefix; Save starts the chat.
+- "list my open tabs and tell me how many" → a `checked your open tabs` action line, then a text answer.
+- "open news.ycombinator.com and read me the top story" → `opened …` + `read the page` actions, then the story.
+- Start a long task, click **Stop** → the run halts and the panel shows "Stopped."
+- Switch the header model to Gemini (with a Gemini key set), send a turn → routes to the Gemini adapter.
+- Text-only model (DeepSeek): screenshots are skipped; DOM/eval still drives the task.
+- Dark/light follows the browser theme; keyboard focus is visible; the status dot pulses only while working (and not under reduced-motion).

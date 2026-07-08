@@ -10,7 +10,19 @@ Two ways to use it:
   your browser — safely, on localhost, with no cloud in the loop.
 
 The rest of this README documents the terminal bridge. See
-`docs/superpowers/specs/` for the chat-sidebar design.
+`docs/superpowers/` for the chat-sidebar spec and plan.
+
+---
+
+## Quick start (chat sidebar)
+
+1. `chrome://extensions` → **Developer mode** on → **Load unpacked** → select the `extension/` folder.
+2. Click the **Otto** toolbar icon → the side panel opens.
+3. Pick a provider (Claude, Gemini, or an OpenAI-compatible endpoint), paste an **API key**, **Save & start**, and chat. Otto drives your tabs; hit **Stop** any time.
+
+That's it — no server, no terminal. Your key is stored locally in the browser and sent
+only to the provider you pick. (Gemini's Flash-Lite has a free API tier if you want
+zero-cost use.) The terminal bridge below is a separate, advanced mode.
 
 ---
 
