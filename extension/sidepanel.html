@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><link rel="stylesheet" href="sidepanel.css"></head>
+<body>
+  <header id="bar">
+    <span id="dot" title="Idle" aria-hidden="true"></span>
+    <span id="mark">Otto</span>
+    <select id="model" aria-label="Model"></select>
+    <button id="gear" class="icon" title="Settings" aria-label="Settings">⚙</button>
+  </header>
+
+  <section id="onboarding" hidden aria-label="Setup">
+    <h2>Meet Otto</h2>
+    <p class="lede">Otto drives your browser for you. Pick a provider and add an API key to begin.</p>
+    <label>Provider<select id="ob-provider"></select></label>
+    <label>API key <a id="getkey" target="_blank" rel="noopener">Get a key ↗</a>
+      <input id="ob-key" type="password" placeholder="Paste your key" autocomplete="off" spellcheck="false"></label>
+    <div class="row"><button id="ob-test" class="ghost">Test key</button><span id="ob-status" role="status"></span></div>
+    <button id="ob-save" class="primary">Save &amp; start</button>
+    <p class="hint">Your key is stored only in this browser and sent only to the provider you pick. Otto acts on your open tabs on its own — you can stop it any time.</p>
+  </section>
+
+  <main id="log" aria-live="polite" aria-label="Conversation">
+    <div id="empty" class="empty">
+      <p>Ask Otto to do something in your browser. For example:</p>
+      <button class="example">Summarize the page in my active tab</button>
+      <button class="example">List my open tabs and group them by site</button>
+      <button class="example">Open news.ycombinator.com and read me the top story</button>
+    </div>
+  </main>
+
+  <footer>
+    <textarea id="input" rows="2" placeholder="Ask Otto to do something…" aria-label="Message"></textarea>
+    <button id="send" class="primary" aria-label="Send">Send</button>
+    <button id="stop" class="danger" hidden aria-label="Stop">Stop</button>
+  </footer>
+  <script type="module" src="sidepanel.js"></script>
+</body></html>

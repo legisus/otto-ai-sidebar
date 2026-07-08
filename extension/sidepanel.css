@@ -1,0 +1,62 @@
+/* Otto — cockpit: amber signal on graphite. One accent (amber). Two type voices. */
+:root {
+  color-scheme: light dark;
+  --signal: #F5A524; --signal-soft: #F5A52433;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", monospace;
+  --ink: #16181D; --surface: #1E2128; --paper: #F7F8F9;
+  --bg: var(--paper); --panel: #FFFFFF; --text: var(--ink); --muted: #6B7280; --line: #E3E6EA;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: var(--ink); --panel: var(--surface); --text: #E6E8EB; --muted: #8A8F98; --line: #2A2E37; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; height: 100vh; display: flex; flex-direction: column;
+  font: 14px/1.55 var(--sans); background: var(--bg); color: var(--text); }
+
+#bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+#mark { font-weight: 700; letter-spacing: .02em; }
+#dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+#dot.live { background: var(--signal); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 var(--signal-soft); } 50% { box-shadow: 0 0 0 5px transparent; } }
+@media (prefers-reduced-motion: reduce) { #dot.live { animation: none; } }
+#model { margin-left: auto; max-width: 55%; background: transparent; color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }
+.icon { background: none; border: 0; color: var(--muted); font-size: 15px; cursor: pointer; padding: 4px; }
+.icon:hover { color: var(--text); }
+
+#log { flex: 1; overflow-y: auto; padding: 12px; }
+.msg { margin: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.user { color: var(--text); font-weight: 600; }
+.msg.user::before { content: "You"; display: block; font: 600 11px var(--mono); color: var(--muted); letter-spacing: .06em; }
+.msg.assistant::before { content: "Otto"; display: block; font: 600 11px var(--mono); color: var(--signal); letter-spacing: .06em; }
+.msg.error { color: #E5484D; }
+
+/* the route line: an amber gutter threading Otto's actions */
+.trace { margin: 8px 0 8px 4px; padding-left: 14px; border-left: 2px solid var(--signal); }
+.trace .act { font: 12px/1.7 var(--mono); color: var(--muted); position: relative; }
+.trace .act::before { content: "•"; color: var(--signal); position: absolute; left: -18px; }
+
+.empty { color: var(--muted); padding: 8px 2px; }
+.empty .example { display: block; width: 100%; text-align: left; margin: 6px 0; padding: 8px 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--text); font: inherit; cursor: pointer; }
+.empty .example:hover { border-color: var(--signal); }
+
+footer { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
+#input { flex: 1; resize: none; font: inherit; padding: 8px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--panel); color: var(--text); }
+button.primary { background: var(--signal); color: #16181D; border: 0; border-radius: 8px; padding: 0 14px; font: 600 14px var(--sans); cursor: pointer; }
+button.danger { background: #E5484D; color: #fff; border: 0; border-radius: 8px; padding: 0 14px; font: 600 14px var(--sans); cursor: pointer; }
+button.ghost { background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; color: var(--text); cursor: pointer; }
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+#onboarding { padding: 18px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+#onboarding h2 { margin: 0; }
+#onboarding .lede { margin: 0; color: var(--muted); }
+#onboarding label { display: flex; flex-direction: column; gap: 4px; font: 600 12px var(--sans); }
+#onboarding input, #onboarding select { padding: 8px; font: 14px var(--sans); background: var(--panel);
+  color: var(--text); border: 1px solid var(--line); border-radius: 8px; }
+#getkey { font-weight: 400; color: var(--signal); text-decoration: none; }
+.hint { color: var(--muted); font-size: 12px; }
+.row { display: flex; gap: 10px; align-items: center; }
+#ob-status { color: var(--muted); font-size: 12px; }

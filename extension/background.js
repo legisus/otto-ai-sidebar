@@ -1,8 +1,15 @@
 // Otto — extension service worker.
-// Maintains a WebSocket to the local bridge server and executes commands
-// against chrome.* APIs. Trusted input and CSP-proof eval go through
-// chrome.debugger (DevTools protocol), so they work on sites that reject
-// synthetic DOM events (Gmail, Grammarly, Google Docs, ...).
+// Two roles: (1) v0.1 terminal bridge over a localhost WebSocket, and (2) the v0.2
+// chat sidebar's agent host. Both execute browser actions through the same handle().
+// Trusted input and CSP-proof eval go through chrome.debugger (DevTools protocol).
+
+import { TOOLS } from "./tools.js";
+import { PROVIDERS, findModel } from "./providers/registry.js";
+import { getSettings } from "./config.js";
+import { runAgent } from "./agent.js";
+import { claudeAdapter } from "./providers/claude.js";
+import { geminiAdapter } from "./providers/gemini.js";
+import { openaiCompatAdapter } from "./providers/openai-compat.js";
 
 const DEFAULTS = { port: 8765, token: "", allowlist: [] };
 
@@ -215,3 +222,62 @@ async function handle(cmd, p) {
       throw new Error(`unknown command: ${cmd}`);
   }
 }
+
+// ==================== v0.2 chat sidebar: agent host ====================
+
+function makeAdapter(providerId, endpoint, apiKey) {
+  const p = PROVIDERS.find((x) => x.id === providerId);
+  const args = { apiKey, baseURL: endpoint.baseURL };
+  if (p.adapter === "claude") return claudeAdapter(args);
+  if (p.adapter === "gemini") return geminiAdapter(args);
+  return openaiCompatAdapter(args);
+}
+
+// Reuse handle(); screenshots/pdf come back as base64 which we surface as an image block.
+async function execTool(name, input) {
+  const r = await handle(name, input);
+  if ((name === "screenshot" || name === "pdf") && r?.base64) return { content: `[${name} captured]`, image: r.base64 };
+  return { content: typeof r === "string" ? r : JSON.stringify(r) };
+}
+
+const SYSTEM =
+  "You are Otto, an assistant that controls the user's web browser to complete tasks. " +
+  "Use the tools to read pages (eval returns DOM text/values), click, type, navigate, open/close tabs, and screenshot. " +
+  "Prefer eval to read a page's text; use screenshot when you need to SEE layout or find click coordinates. " +
+  "Coordinates for click are CSS pixels in the tab's viewport — get them from an eval that returns getBoundingClientRect. " +
+  "Work autonomously to completion, then reply to the user concisely in plain language.";
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "otto-chat") return;
+  const history = [];
+  let ac = null;
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type === "stop") { ac?.abort(); return; }
+    if (msg.type !== "user") return;
+    try {
+      const s = await getSettings();
+      const hit = findModel(s.provider, s.endpoint, s.model);
+      if (!hit) { port.postMessage({ type: "error", error: "No model selected — open settings (⚙)." }); return; }
+      const apiKey = s.apiKeys[s.provider];
+      if (!apiKey) { port.postMessage({ type: "error", error: `I don't have an API key for ${hit.provider.label} yet — add one in settings (⚙).` }); return; }
+      const adapter = makeAdapter(s.provider, hit.endpoint, apiKey);
+      history.push({ role: "user", text: msg.text });
+      ac = new AbortController();
+      const res = await runAgent({
+        adapter, model: s.model, system: SYSTEM, tools: TOOLS, vision: hit.model.vision, history,
+        execTool, signal: ac.signal,
+        onText: (t) => port.postMessage({ type: "text", text: t }),
+        onToolStart: (tc) => port.postMessage({ type: "toolStart", name: tc.name, input: tc.input }),
+        onToolResult: (tc) => port.postMessage({ type: "toolResult", name: tc.name }),
+      });
+      port.postMessage({ type: "done", stopReason: res.stopReason });
+    } catch (e) {
+      port.postMessage({ type: "error", error: String(e.message || e) });
+    } finally { ac = null; }
+  });
+});
+
+// Open the side panel when the toolbar icon is clicked.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
+});

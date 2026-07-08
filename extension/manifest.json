@@ -1,23 +1,22 @@
 {
   "manifest_version": 3,
   "name": "Otto",
-  "version": "0.1.0",
-  "description": "Otto — your browser, on autopilot. A Claude-powered assistant that drives your logged-in browser: tabs, trusted input, downloads, PDFs. Also exposes a local bridge (127.0.0.1) for terminal agents.",
+  "version": "0.2.0",
+  "description": "Otto — your browser, on autopilot. A Claude/Gemini/OpenAI-powered side-panel assistant that drives your logged-in browser. Also exposes a local bridge for terminal agents.",
   "author": "Mykola Bielousov",
-  "permissions": [
-    "tabs",
-    "scripting",
-    "debugger",
-    "downloads",
-    "storage",
-    "alarms"
+  "permissions": ["tabs", "scripting", "debugger", "downloads", "storage", "alarms", "sidePanel"],
+  "host_permissions": [
+    "<all_urls>",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.openai.com/*",
+    "https://api.deepseek.com/*",
+    "https://api.mistral.ai/*",
+    "https://api.groq.com/*"
   ],
-  "host_permissions": ["<all_urls>"],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "options_ui": {
-    "page": "options.html",
-    "open_in_tab": true
-  }
+  "background": { "service_worker": "background.js", "type": "module" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "Open Otto" },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "options_ui": { "page": "options.html", "open_in_tab": true }
 }
