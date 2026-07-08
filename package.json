@@ -1,6 +1,6 @@
 {
   "name": "otto",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Otto — your browser, on autopilot. A Claude-powered Chrome side-panel assistant that autonomously drives your logged-in browser, plus a localhost bridge for terminal agents.",
   "author": "Mykola Bielousov",
   "license": "MIT",
@@ -11,11 +11,21 @@
   },
   "scripts": {
     "start": "node server/server.js",
-    "test": "node test/protocol.test.js"
+    "test": "node --test test/tools.test.js test/adapters.test.js test/agent.test.js test/protocol.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"
   },
-  "keywords": ["chrome-extension", "browser-automation", "ai-agent", "devtools-protocol", "claude", "otto", "side-panel"],
-  "engines": { "node": ">=18" }
+  "keywords": [
+    "chrome-extension",
+    "browser-automation",
+    "ai-agent",
+    "devtools-protocol",
+    "claude",
+    "otto",
+    "side-panel"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
 }
