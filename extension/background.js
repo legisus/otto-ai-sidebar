@@ -1,4 +1,4 @@
-// AI Browser Bridge — extension service worker.
+// Otto — extension service worker.
 // Maintains a WebSocket to the local bridge server and executes commands
 // against chrome.* APIs. Trusted input and CSP-proof eval go through
 // chrome.debugger (DevTools protocol), so they work on sites that reject

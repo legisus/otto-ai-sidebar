@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "AI Browser Bridge",
+  "name": "Otto",
   "version": "0.1.0",
-  "description": "Local bridge that lets an AI coding agent (or any local tool) drive your logged-in browser: tabs, trusted input, downloads, PDFs. Talks only to a server on 127.0.0.1 that you run yourself.",
+  "description": "Otto — your browser, on autopilot. A Claude-powered assistant that drives your logged-in browser: tabs, trusted input, downloads, PDFs. Also exposes a local bridge (127.0.0.1) for terminal agents.",
   "author": "Mykola Bielousov",
   "permissions": [
     "tabs",

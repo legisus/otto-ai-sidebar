@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// AI Browser Bridge — local relay server.
+// Otto — local relay server (terminal-bridge mode).
 // One persistent "extension" client (the Chrome extension) and any number of
 // transient "cli" clients. CLI requests are forwarded to the extension; its
 // responses are routed back by request id.
 //
 // Security model: binds 127.0.0.1 only; every client must present the token
-// from ~/.ai-browser-bridge/token (created on first start, chmod 600).
+// from ~/.otto/token (created on first start, chmod 600).
 
 const { WebSocketServer } = require("ws");
 const fs = require("fs");
@@ -14,7 +14,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const PORT = Number(process.env.BRIDGE_PORT || 8765);
-const DIR = path.join(os.homedir(), ".ai-browser-bridge");
+const DIR = path.join(os.homedir(), ".otto");
 const TOKEN_FILE = path.join(DIR, "token");
 const LOG_FILE = path.join(DIR, "bridge.log");
 

@@ -1,13 +1,13 @@
 {
-  "name": "ai-browser-bridge",
+  "name": "otto",
   "version": "0.1.0",
-  "description": "Local bridge between an AI coding agent (or any local tool) and your logged-in Chrome: tabs, CSP-proof eval, trusted input, authenticated downloads, print-to-PDF. No cloud, localhost only.",
+  "description": "Otto — your browser, on autopilot. A Claude-powered Chrome side-panel assistant that autonomously drives your logged-in browser, plus a localhost bridge for terminal agents.",
   "author": "Mykola Bielousov",
   "license": "MIT",
   "main": "server/server.js",
   "bin": {
-    "ai-bridge-server": "server/server.js",
-    "bridge": "server/cli.js"
+    "otto-server": "server/server.js",
+    "otto": "server/cli.js"
   },
   "scripts": {
     "start": "node server/server.js",
@@ -16,6 +16,6 @@
   "dependencies": {
     "ws": "^8.18.0"
   },
-  "keywords": ["chrome-extension", "browser-automation", "ai-agent", "devtools-protocol", "claude", "bridge"],
+  "keywords": ["chrome-extension", "browser-automation", "ai-agent", "devtools-protocol", "claude", "otto", "side-panel"],
   "engines": { "node": ">=18" }
 }

@@ -1,4 +1,4 @@
-# AI Browser Bridge — Chat Sidebar (v0.2) Design
+# Otto — Chat Sidebar (v0.2) Design
 
 **Date:** 2026-07-08
 **Status:** Approved (design), pending implementation plan
@@ -6,7 +6,7 @@
 
 ## Context
 
-v0.1 of AI Browser Bridge is a local relay + CLI + MV3 extension that lets a terminal
+v0.1 of Otto is a local relay + CLI + MV3 extension that lets a terminal
 agent drive the user's logged-in Chrome (trusted input, CSP-proof eval, authenticated
 downloads, print-to-PDF), verified by `test/integration.sh` (15/15) and `protocol.test.js`.
 
@@ -69,7 +69,7 @@ actions through the same code — no duplication.
 
 ### Distribution
 - Icon set + clean manifest → **Chrome Web Store–publishable**.
-- `build.sh` → produces `dist/ai-browser-bridge.zip` for the store and unpacked sharing.
+- `build.sh` → produces `dist/otto.zip` for the store and unpacked sharing.
 - README rewrite: **Quick Start (chat)** at top (install → key → chat); v0.1 server/CLI setup moved to an "Advanced" section.
 
 ## Data flow (one turn)

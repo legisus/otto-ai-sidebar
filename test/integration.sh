@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Live integration test for AI Browser Bridge.
+# Live integration test for Otto.
 # Requires: server running + extension loaded, provisioned, and connected.
 # Exercises every command that replaces an AppleScript technique used in the
 # original browser-automation session. Prints a PASS/FAIL table; exits non-zero
@@ -13,7 +13,7 @@ ok()   { echo "PASS  $1"; pass=$((pass+1)); }
 bad()  { echo "FAIL  $1  -- $2"; fail=$((fail+1)); }
 check(){ [ "$2" = "$3" ] && ok "$1" || bad "$1" "got:$2 want:$3"; }
 
-echo "== AI Browser Bridge :: integration =="
+echo "== Otto :: integration =="
 
 # 0) health -------------------------------------------------------------
 PONG=$(b ping | node -e 'process.stdin.on("data",d=>{try{console.log(JSON.parse(d).pong)}catch{console.log("ERR")}})')

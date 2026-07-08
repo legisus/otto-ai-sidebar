@@ -14,7 +14,7 @@ const path = require("path");
 
 const PORT = 8799; // test port, avoid clashing with a running bridge
 const env = { ...process.env, BRIDGE_PORT: String(PORT) };
-const TOKEN_FILE = path.join(os.homedir(), ".ai-browser-bridge", "token");
+const TOKEN_FILE = path.join(os.homedir(), ".otto", "token");
 
 let failures = 0;
 const assert = (cond, name) => {

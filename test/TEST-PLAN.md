@@ -1,4 +1,4 @@
-# AI Browser Bridge — Test Plan
+# Otto — Test Plan
 
 Goal: prove the bridge covers **every browser-control technique we previously did
 through AppleScript/osascript**, so it can replace that approach for real work.
@@ -46,7 +46,7 @@ Two layers:
 ## Manual / observational checks (not auto-assertable)
 
 - **Debugger banner**: first `eval`/`click`/`pdf` on a tab shows Chrome's
-  "AI Browser Bridge started debugging this browser" banner; `detach` clears it.
+  "Otto started debugging this browser" banner; `detach` clears it.
 - **No focus theft**: run `integration.sh` while typing in another app — focus must
   never jump to Chrome (the original AppleScript pain point).
 - **Allowlist enforcement**: set a host allowlist in Options, then `eval` on a

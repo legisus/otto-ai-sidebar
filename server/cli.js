@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// AI Browser Bridge — command-line client.
+// Otto — command-line client.
 //
-//   bridge ping
-//   bridge listTabs
-//   bridge newTab '{"url":"https://example.com"}'
-//   bridge eval '{"tabId":123}' --file script.js
-//   bridge eval '{"tabId":123,"code":"document.title"}'
-//   bridge pdf '{"tabId":123}' --out page.pdf
-//   bridge download '{"url":"https://...","filename":"cert.pdf"}'
+//   otto ping
+//   otto listTabs
+//   otto newTab '{"url":"https://example.com"}'
+//   otto eval '{"tabId":123}' --file script.js
+//   otto eval '{"tabId":123,"code":"document.title"}'
+//   otto pdf '{"tabId":123}' --out page.pdf
+//   otto download '{"url":"https://...","filename":"cert.pdf"}'
 //
 // Prints the JSON result on stdout; exits non-zero on error.
 
@@ -18,7 +18,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const PORT = Number(process.env.BRIDGE_PORT || 8765);
-const TOKEN = fs.readFileSync(path.join(os.homedir(), ".ai-browser-bridge", "token"), "utf8").trim();
+const TOKEN = fs.readFileSync(path.join(os.homedir(), ".otto", "token"), "utf8").trim();
 
 const argv = process.argv.slice(2);
 if (argv.length === 0) {
