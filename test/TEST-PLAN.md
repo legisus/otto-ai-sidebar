@@ -1,78 +1,33 @@
 # Otto — Test Plan
 
-Goal: prove the bridge covers **every browser-control technique we previously did
-through AppleScript/osascript**, so it can replace that approach for real work.
+## Offline suites (`npm test`, no Chrome, no network)
 
-Two layers:
+- `tools.test.js` — the browser-command tool registry (names, schemas, required params).
+- `adapters.test.js` — provider/model registry + Claude/Gemini/OpenAI-compat stream
+  normalization to `{text|toolCall|done}`, vision-strip when `vision:false`, and Gemini's
+  `additionalProperties` stripping.
+- `agent.test.js` — the agent loop: tool round-trip, 25-turn cap, tool-error recovery, AbortSignal stop.
+- `http.test.js` — `fetchRetry` (retry transient 5xx, not 4xx) and friendly `httpError` messages.
 
-1. **`protocol.test.js`** — offline unit test. Starts the server + a *simulated*
-   extension + the real CLI; asserts auth rejection and command round-trips. No Chrome
-   required. Run: `npm test`.
-2. **`integration.sh`** — live end-to-end test. Drives the **real extension + Chrome**
-   through the CLI against a self-injected fixture page, asserting observable results.
-   Requires the server running and the extension connected. Run:
-   `bash test/integration.sh`. Runs in a throwaway background tab; leaves your tabs alone.
+Last run: **19/19 PASS**. Adapters and the loop are pure/injected, so they run without a browser.
 
-## Coverage map — AppleScript technique → bridge command → test case
+## Live-verified against real APIs
 
-| # | Session AppleScript technique | Bridge command | Integration case | How it's verified |
-|---|---|---|---|---|
-| 0 | (health / is Chrome reachable) | `ping` | ping (health) | returns `{pong:true}` |
-| 1 | `make new tab/window` (background, minimized) | `newTab` (`active:false`) | newTab background | returns a tab id; opens without focus |
-| 2 | `execute javascript` — read innerText, scrape, set form fields | `eval` (CSP-proof `Runtime.evaluate`) | eval inject fixture / DOM read | reads title + element presence |
-| 3 | list tabs / find tab by URL substring | `listTabs` | listTabs present | fixture tab id found in list |
-| 4 | real **Cmd+V paste** (Grammarly/IJECE forms) | `insertText` (trusted) | insertText into input | input `.value` equals inserted text |
-| 5 | `System Events` **click at {x,y}** (trusted) | `click` (trusted mouse event) | click fires handler | page `__clicked` flips true |
-| 6 | `keystroke` (Enter, Cmd+A) | `key` (trusted key event) | keydown Enter | page records `__lastKey==="Enter"` |
-| 7 | `set URL of tab` | `navigate` | navigate URL change | `location.hostname` updates |
-| 8 | `chrome --headless --print-to-pdf` (email/exhibit PDFs) | `pdf` | print-to-PDF | output file starts with `%PDF` |
-| 9 | `screencapture` (Grammarly screenshot) | `screenshot` | PNG bytes | output file has PNG magic bytes |
-| 10 | Gmail attachment: fetch in page → base64 → file | `download` (uses browser cookies) | authenticated download | file lands on disk, path returned |
-| 11 | `activate` / `set index` / focus window / un-minimize | `activateTab` | focus tab+window | returns `{ok:true}`; tab becomes active |
-| 12 | (n/a in AppleScript) clear DevTools debugger banner | `detach` | release debugger | returns `{ok:true}` |
-| 13 | `close tab` / `close window` | `closeTab` | tab removed | tab id absent from `listTabs` |
-| — | auth/token rejection (security) | server auth | protocol.test.js | bad token → socket closed |
+Run the adapters against the real provider APIs from Node (import the adapter, inject
+`fetch`, send an "open youtube.com in a new tab" prompt with the tool set):
 
-### Techniques deliberately NOT ported (host-OS, out of scope for the extension)
+- **Claude Sonnet 5** — calls `newTab`, full round trip. ✅
+- **Gemini 2.5 Flash** — calls `newTab`, then confirms after the tool result. ✅ (needs
+  `toolConfig:AUTO`, CRLF-aware SSE parsing, and `thoughtSignature` echo — all in the adapter.)
+- **OpenAI** — auth verified; full run pending an account with quota.
 
-- **Clipboard backup/restore** (`pbcopy`/`pbpaste`): only needed *because* AppleScript
-  paste hijacked the system clipboard. `insertText` writes straight to the page and never
-  touches the clipboard, so the whole dance is obsolete.
-- **Window minimize gymnastics / focus hand-back**: the bridge works in background tabs
-  with no focus change, so there is nothing to minimize or restore.
-- **`screencapture` of the whole screen**: replaced by tab-scoped `screenshot`
-  (and `pdf`), which don't require the window to be visible or frontmost.
+## Manual checklist (needs a real key; load unpacked, open the side panel)
 
-## Manual / observational checks (not auto-assertable)
-
-- **Debugger banner**: first `eval`/`click`/`pdf` on a tab shows Chrome's
-  "Otto started debugging this browser" banner; `detach` clears it.
-- **No focus theft**: run `integration.sh` while typing in another app — focus must
-  never jump to Chrome (the original AppleScript pain point).
-- **Allowlist enforcement**: set a host allowlist in Options, then `eval` on a
-  non-listed domain must return `host "..." not in allowlist`.
-
-## Last run
-
-`integration.sh` — **15/15 PASS** (2026-07-07, extension v0.1.0, Chrome on macOS).
-`protocol.test.js` — **4/4 PASS**.
-
-Re-run both after any change to `background.js`, `server.js`, or `cli.js`.
-
-## Chat sidebar (v0.2)
-
-**Offline suites** — `npm test` runs them all:
-- `tools.test.js` — tool registry shape.
-- `adapters.test.js` — provider registry + Claude/Gemini/OpenAI-compat stream normalization + vision-strip when `vision:false`.
-- `agent.test.js` — agent loop: tool round-trip, max-turns cap, tool-error recovery, AbortSignal stop.
-
-Last run: **16/16 PASS** (2026-07-08).
-
-**Manual checklist** (needs a real API key; load unpacked, open the side panel):
-- Onboarding appears on first run; "Test key" rejects a bad prefix; Save starts the chat.
-- "list my open tabs and tell me how many" → a `checked your open tabs` action line, then a text answer.
-- "open news.ycombinator.com and read me the top story" → `opened …` + `read the page` actions, then the story.
-- Start a long task, click **Stop** → the run halts and the panel shows "Stopped."
-- Switch the header model to Gemini (with a Gemini key set), send a turn → routes to the Gemini adapter.
-- Text-only model (DeepSeek): screenshots are skipped; DOM/eval still drives the task.
-- Dark/light follows the browser theme; keyboard focus is visible; the status dot pulses only while working (and not under reduced-motion).
+- Onboarding appears on first run; "Test key" reports the real validation result; Save starts the chat.
+- Status dot: gray (no key) → green (ready, model on hover) → amber pulse (working) → red (error).
+- "list my open tabs and tell me how many" → a `checked your open tabs` action, then an answer.
+- "open news.ycombinator.com and read me the top story" → `opened …` + `read the page`, then the story.
+- "save this page as a PDF" → lands in Downloads (not fed to the model as an image).
+- Start a long task, click **Stop** → the run halts and shows "Stopped."
+- Switch the header model to Gemini (with a Gemini key) → routes to the Gemini adapter.
+- Dark/light follows the browser theme; keyboard focus visible; the dot pulses only while working (and not under reduced-motion).
