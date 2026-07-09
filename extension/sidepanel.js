@@ -74,8 +74,12 @@ $("ob-test").addEventListener("click", async () => {
   const p = currentProvider(); const key = $("ob-key").value.trim();
   if (!key) { $("ob-status").textContent = "Enter a key first."; return; }
   $("ob-status").textContent = "Testing…";
-  const res = await chrome.runtime.sendMessage({ type: "otto-validate", provider: p.id, endpointId: p.endpoints[0].id, key });
-  $("ob-status").textContent = res?.ok ? "Key works ✓" : `Key rejected — ${res?.error || "no response"}`;
+  try {
+    const res = await chrome.runtime.sendMessage({ type: "otto-validate", provider: p.id, endpointId: p.endpoints[0].id, key });
+    $("ob-status").textContent = res?.ok ? "Key works ✓" : `Key rejected — ${res?.error || "no response"}`;
+  } catch (e) {
+    $("ob-status").textContent = `Couldn't reach Otto's engine — reload the extension in chrome://extensions, then try again. (${e.message})`;
+  }
 });
 $("ob-save").addEventListener("click", async () => {
   const p = currentProvider(); const key = $("ob-key").value.trim();
