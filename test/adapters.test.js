@@ -95,3 +95,14 @@ test("gemini normalizes text + functionCall + finish", async () => {
   assert.equal(events.find(e => e.type === "toolCall").name, "listTabs");
   assert.equal(events.at(-1).type, "done");
 });
+
+test("gemini strips additionalProperties (rejected by the Gemini API)", async () => {
+  let sentBody;
+  const fakeFetch = async (_url, opts) => { sentBody = opts.body; return geminiSSE([{ candidates: [{ finishReason: "STOP" }] }]); };
+  const ad = geminiAdapter({ apiKey: "AIza-x", baseURL: "https://generativelanguage.googleapis.com/v1beta" });
+  for await (const _ of ad.stream({ model: "gemini-3.5-flash", system: "", messages: [{ role: "user", text: "hi" }], tools: TOOLS, vision: true, fetchImpl: fakeFetch })) {}
+  assert.ok(!sentBody.includes("additionalProperties"), "additionalProperties must be stripped for Gemini");
+  const decls = JSON.parse(sentBody).tools[0].functionDeclarations;
+  const listTabs = decls.find(d => d.name === "listTabs");
+  assert.ok(!("parameters" in listTabs), "no-arg tools omit parameters (Gemini rejects empty properties)");
+});

@@ -1,5 +1,32 @@
 // Maps Otto internal format to Gemini generateContent and normalizes the SSE stream.
 
+// Gemini's function-declaration parameters use a restricted OpenAPI subset that rejects
+// `additionalProperties` (and a few other JSON-Schema keywords). Strip them recursively.
+const GEMINI_DROP = new Set(["additionalProperties", "$schema", "$id", "$ref", "definitions"]);
+function geminiSchema(s) {
+  if (Array.isArray(s)) return s.map(geminiSchema);
+  if (s && typeof s === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(s)) { if (GEMINI_DROP.has(k)) continue; out[k] = geminiSchema(v); }
+    return out;
+  }
+  return s;
+}
+// A no-argument tool: omit `parameters` entirely (Gemini dislikes empty properties objects).
+function geminiParams(schema) {
+  const clean = geminiSchema(schema);
+  if (!clean.properties || Object.keys(clean.properties).length === 0) return undefined;
+  return clean;
+}
+function geminiFunctionDeclarations(tools) {
+  return tools.map((t) => {
+    const fn = { name: t.name, description: t.description };
+    const params = geminiParams(t.input_schema);
+    if (params) fn.parameters = params;
+    return fn;
+  });
+}
+
 function toGeminiContents(messages, vision) {
   const contents = [];
   for (const m of messages) {
@@ -36,7 +63,7 @@ export function geminiAdapter({ apiKey, baseURL }) {
     async *stream({ model, system, messages, tools, vision, fetchImpl = fetch, signal }) {
       const body = {
         contents: toGeminiContents(messages, vision),
-        tools: [{ functionDeclarations: tools.map(t => ({ name: t.name, description: t.description, parameters: t.input_schema })) }],
+        tools: [{ functionDeclarations: geminiFunctionDeclarations(tools) }],
       };
       if (system) body.systemInstruction = { parts: [{ text: system }] };
       const url = `${baseURL}/models/${model}:streamGenerateContent?alt=sse`;
