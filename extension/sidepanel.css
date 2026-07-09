@@ -16,7 +16,10 @@ body { margin: 0; height: 100vh; display: flex; flex-direction: column;
 
 #bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 #mark { font-weight: 700; letter-spacing: .02em; }
-#dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+/* status: gray = not configured · green = ready · amber pulse = working · red = error */
+#dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+#dot.ready { background: #30A46C; }
+#dot.error { background: #E5484D; }
 #dot.live { background: var(--signal); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 var(--signal-soft); } 50% { box-shadow: 0 0 0 5px transparent; } }
 @media (prefers-reduced-motion: reduce) { #dot.live { animation: none; } }

@@ -51,6 +51,7 @@ async function refreshHeader() {
 $("model").addEventListener("change", async () => {
   const [provider, endpoint, model] = $("model").value.split("|");
   await setSettings({ provider, endpoint, model });
+  await refreshStatus();
 });
 
 // --- onboarding ---
@@ -97,16 +98,34 @@ $("ob-save").addEventListener("click", async () => {
   await setSettings({ provider: p.id, endpoint: endpoint.id, model, apiKeys: { [p.id]: key } });
   $("onboarding").hidden = true;
   await refreshHeader();
+  await refreshStatus();
   const s = await getSettings();
   add("assistant", `Ready — using ${modelLabel(s)}. Ask me to do something in your browser.`);
 });
 $("gear").addEventListener("click", openOnboarding);
 
+// --- status dot: gray (not configured) · green (ready) · amber (working) · red (error) ---
+async function refreshStatus() {
+  const s = await getSettings();
+  const ready = !!s.apiKeys[s.provider];
+  const dot = $("dot");
+  dot.classList.remove("live", "error");
+  dot.classList.toggle("ready", ready);
+  dot.title = ready ? `Ready — ${modelLabel(s)}` : "Add an API key to start (⚙)";
+}
+function setError() {
+  const dot = $("dot");
+  dot.classList.remove("live", "ready");
+  dot.classList.add("error");
+  dot.title = "Something went wrong — see the message below";
+}
+
 // --- run state ---
 let working; // the transient "Otto is working…" row
 function setRunning(on) {
-  $("dot").classList.toggle("live", on);
-  $("dot").title = on ? "Working…" : "Idle";
+  const dot = $("dot");
+  dot.classList.toggle("live", on);
+  if (on) { dot.classList.remove("ready", "error"); dot.title = "Working…"; }
   $("send").hidden = on; $("stop").hidden = !on;
   $("input").disabled = on;
 }
@@ -121,10 +140,10 @@ function connect() {
     if (m.type === "text") { clearWorking(); if (!live) live = add("assistant", ""); live.textContent += m.text; log.scrollTop = log.scrollHeight; }
     else if (m.type === "toolStart") { clearWorking(); live = null; addAction(m.name, m.input); }
     else if (m.type === "toolResult") { showWorking(); }
-    else if (m.type === "done") { clearWorking(); setRunning(false); live = null; if (m.stopReason === "stopped") add("assistant", "Stopped."); else if (m.stopReason === "max_turns") add("assistant", "Stopped after 25 steps — ask me to continue if needed."); }
-    else if (m.type === "error") { clearWorking(); setRunning(false); live = null; add("error", m.error); }
+    else if (m.type === "done") { clearWorking(); setRunning(false); live = null; if (m.stopReason === "stopped") add("assistant", "Stopped."); else if (m.stopReason === "max_turns") add("assistant", "Stopped after 25 steps — ask me to continue if needed."); refreshStatus(); }
+    else if (m.type === "error") { clearWorking(); setRunning(false); live = null; add("error", m.error); setError(); }
   });
-  port.onDisconnect.addListener(() => { port = null; clearWorking(); setRunning(false); });
+  port.onDisconnect.addListener(() => { port = null; clearWorking(); setRunning(false); refreshStatus(); });
 }
 
 function send(text) {
@@ -140,4 +159,4 @@ $("stop").addEventListener("click", () => { port?.postMessage({ type: "stop" });
 $("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
 log.addEventListener("click", (e) => { if (e.target.classList.contains("example")) send(e.target.textContent); });
 
-refreshHeader().then(maybeOnboard);
+refreshHeader().then(maybeOnboard).then(refreshStatus);
