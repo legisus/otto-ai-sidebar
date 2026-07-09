@@ -1,5 +1,6 @@
 // Maps Otto's internal message/tool format to the Anthropic Messages API and
 // normalizes the SSE stream back to Otto events. No chrome.* — fetch is injected.
+import { fetchRetry, httpError } from "./http.js";
 
 function toAnthropicMessages(messages) {
   const out = [];
@@ -41,7 +42,7 @@ export function claudeAdapter({ apiKey, baseURL }) {
         tools: tools.map(t => ({ name: t.name, description: t.description, input_schema: t.input_schema })),
         messages: toAnthropicMessages(messages),
       };
-      const res = await fetchImpl(`${baseURL}/messages`, {
+      const res = await fetchRetry(fetchImpl, `${baseURL}/messages`, {
         method: "POST", signal,
         headers: {
           "content-type": "application/json",
@@ -50,8 +51,8 @@ export function claudeAdapter({ apiKey, baseURL }) {
           "anthropic-dangerous-direct-browser-access": "true",
         },
         body: JSON.stringify(body),
-      });
-      if (!res.ok) { const txt = await (res.text?.() ?? Promise.resolve("")); throw new Error(`Claude API ${res.status}: ${txt}`); }
+      }, { signal });
+      if (!res.ok) throw await httpError("Claude", res);
 
       const toolAcc = {};
       for await (const ev of parseSSE(res)) {

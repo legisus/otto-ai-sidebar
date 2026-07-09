@@ -1,8 +1,9 @@
 import { getSettings, setSettings } from "./config.js";
-import { PROVIDERS } from "./providers/registry.js";
+import { PROVIDERS, findModel } from "./providers/registry.js";
 
 const $ = (id) => document.getElementById(id);
 const log = $("log");
+function modelLabel(s) { const hit = findModel(s.provider, s.endpoint, s.model); return hit ? `${hit.provider.label.split(" ")[0]} ${hit.model.label}` : s.model; }
 
 // Plain-language action labels — name what the user recognizes, not the tool call.
 function actionLabel(name, input = {}) {
@@ -87,30 +88,43 @@ $("ob-test").addEventListener("click", async () => {
 $("ob-save").addEventListener("click", async () => {
   const p = currentProvider(); const key = $("ob-key").value.trim();
   if (!key) { $("ob-status").textContent = "Enter a key first."; return; }
-  const endpoint = p.endpoints[0], model = endpoint.models[0];
-  await setSettings({ provider: p.id, endpoint: endpoint.id, model: model.id, apiKeys: { [p.id]: key } });
-  $("onboarding").hidden = true; await refreshHeader();
+  const endpoint = p.endpoints[0];
+  // Keep the model already chosen in the header if it belongs to this provider/endpoint;
+  // otherwise default to the endpoint's first model. (Fixes the header selection resetting.)
+  const cur = await getSettings();
+  const keep = findModel(p.id, endpoint.id, cur.model);
+  const model = keep ? cur.model : endpoint.models[0].id;
+  await setSettings({ provider: p.id, endpoint: endpoint.id, model, apiKeys: { [p.id]: key } });
+  $("onboarding").hidden = true;
+  await refreshHeader();
+  const s = await getSettings();
+  add("assistant", `Ready — using ${modelLabel(s)}. Ask me to do something in your browser.`);
 });
 $("gear").addEventListener("click", openOnboarding);
 
 // --- run state ---
+let working; // the transient "Otto is working…" row
 function setRunning(on) {
   $("dot").classList.toggle("live", on);
   $("dot").title = on ? "Working…" : "Idle";
   $("send").hidden = on; $("stop").hidden = !on;
+  $("input").disabled = on;
 }
+function showWorking() { if (!working) { working = add("working", "Otto is working…"); } }
+function clearWorking() { if (working) { working.remove(); working = null; } }
 
 // --- chat over the port ---
 let port, live;
 function connect() {
   port = chrome.runtime.connect({ name: "otto-chat" });
   port.onMessage.addListener((m) => {
-    if (m.type === "text") { if (!live) live = add("assistant", ""); live.textContent += m.text; log.scrollTop = log.scrollHeight; }
-    else if (m.type === "toolStart") { live = null; addAction(m.name, m.input); }
-    else if (m.type === "done") { setRunning(false); live = null; if (m.stopReason === "stopped") add("assistant", "Stopped."); }
-    else if (m.type === "error") { setRunning(false); live = null; add("error", m.error); }
+    if (m.type === "text") { clearWorking(); if (!live) live = add("assistant", ""); live.textContent += m.text; log.scrollTop = log.scrollHeight; }
+    else if (m.type === "toolStart") { clearWorking(); live = null; addAction(m.name, m.input); }
+    else if (m.type === "toolResult") { showWorking(); }
+    else if (m.type === "done") { clearWorking(); setRunning(false); live = null; if (m.stopReason === "stopped") add("assistant", "Stopped."); else if (m.stopReason === "max_turns") add("assistant", "Stopped after 25 steps — ask me to continue if needed."); }
+    else if (m.type === "error") { clearWorking(); setRunning(false); live = null; add("error", m.error); }
   });
-  port.onDisconnect.addListener(() => { port = null; setRunning(false); });
+  port.onDisconnect.addListener(() => { port = null; clearWorking(); setRunning(false); });
 }
 
 function send(text) {
@@ -118,6 +132,7 @@ function send(text) {
   $("input").value = ""; add("user", text); live = null;
   if (!port) connect();
   setRunning(true);
+  showWorking();
   port.postMessage({ type: "user", text });
 }
 $("send").addEventListener("click", () => send());

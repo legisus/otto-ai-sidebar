@@ -11,7 +11,7 @@
   },
   "scripts": {
     "start": "node server/server.js",
-    "test": "node --test test/tools.test.js test/adapters.test.js test/agent.test.js test/protocol.test.js"
+    "test": "node --test test/tools.test.js test/adapters.test.js test/agent.test.js test/http.test.js test/protocol.test.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

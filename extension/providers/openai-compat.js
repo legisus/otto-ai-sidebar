@@ -1,5 +1,6 @@
 // One adapter for any OpenAI-compatible chat-completions endpoint (OpenAI, DeepSeek,
 // Mistral, Groq). Vision via image_url data-URI parts; dropped when vision=false.
+import { fetchRetry, httpError } from "./http.js";
 
 function toOpenAIMessages(messages, vision) {
   const out = [];
@@ -37,7 +38,7 @@ async function* parseSSE(res) {
   }
 }
 
-export function openaiCompatAdapter({ apiKey, baseURL }) {
+export function openaiCompatAdapter({ apiKey, baseURL, name = "The model API" }) {
   return {
     async *stream({ model, system, messages, tools, vision, fetchImpl = fetch, signal }) {
       const msgs = [];
@@ -47,12 +48,12 @@ export function openaiCompatAdapter({ apiKey, baseURL }) {
         model, stream: true, messages: msgs,
         tools: tools.map(t => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } })),
       };
-      const res = await fetchImpl(`${baseURL}/chat/completions`, {
+      const res = await fetchRetry(fetchImpl, `${baseURL}/chat/completions`, {
         method: "POST", signal,
         headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
         body: JSON.stringify(body),
-      });
-      if (!res.ok) { const txt = await (res.text?.() ?? Promise.resolve("")); throw new Error(`API ${res.status}: ${txt}`); }
+      }, { signal });
+      if (!res.ok) throw await httpError(name, res);
 
       const acc = {};
       let stop = "stop";

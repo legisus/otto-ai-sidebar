@@ -227,16 +227,24 @@ async function handle(cmd, p) {
 
 function makeAdapter(providerId, endpoint, apiKey) {
   const p = PROVIDERS.find((x) => x.id === providerId);
-  const args = { apiKey, baseURL: endpoint.baseURL };
+  const args = { apiKey, baseURL: endpoint.baseURL, name: `${p.label.split(" ")[0]} (${endpoint.label})` };
   if (p.adapter === "claude") return claudeAdapter(args);
   if (p.adapter === "gemini") return geminiAdapter(args);
   return openaiCompatAdapter(args);
 }
 
-// Reuse handle(); screenshots/pdf come back as base64 which we surface as an image block.
+// Reuse handle(). A screenshot (PNG) is fed back to the model as an image so it can SEE
+// the page. A PDF is a document, not an image — save it to Downloads and report that in text.
 async function execTool(name, input) {
   const r = await handle(name, input);
-  if ((name === "screenshot" || name === "pdf") && r?.base64) return { content: `[${name} captured]`, image: r.base64 };
+  if (name === "screenshot" && r?.base64) return { content: "[screenshot captured]", image: r.base64 };
+  if (name === "pdf" && r?.base64) {
+    try {
+      const filename = (input && input.filename) || "otto-page.pdf";
+      await chrome.downloads.download({ url: `data:application/pdf;base64,${r.base64}`, filename, saveAs: false, conflictAction: "uniquify" });
+      return { content: `Saved the page as a PDF to your Downloads folder (${filename}).` };
+    } catch (e) { return { content: `Rendered a PDF but couldn't save it: ${e.message}` }; }
+  }
   return { content: typeof r === "string" ? r : JSON.stringify(r) };
 }
 

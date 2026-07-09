@@ -31,6 +31,11 @@ body { margin: 0; height: 100vh; display: flex; flex-direction: column;
 .msg.user::before { content: "You"; display: block; font: 600 11px var(--mono); color: var(--muted); letter-spacing: .06em; }
 .msg.assistant::before { content: "Otto"; display: block; font: 600 11px var(--mono); color: var(--signal); letter-spacing: .06em; }
 .msg.error { color: #E5484D; }
+.msg.working { color: var(--muted); font-style: italic; }
+.msg.working::after { content: "▍"; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .msg.working::after { animation: none; } }
+#input:disabled { opacity: .6; }
 
 /* the route line: an amber gutter threading Otto's actions */
 .trace { margin: 8px 0 8px 4px; padding-left: 14px; border-left: 2px solid var(--signal); }

@@ -1,4 +1,5 @@
 // Maps Otto internal format to Gemini generateContent and normalizes the SSE stream.
+import { fetchRetry, httpError } from "./http.js";
 
 // Gemini's function-declaration parameters use a restricted OpenAPI subset that rejects
 // `additionalProperties` (and a few other JSON-Schema keywords). Strip them recursively.
@@ -67,12 +68,12 @@ export function geminiAdapter({ apiKey, baseURL }) {
       };
       if (system) body.systemInstruction = { parts: [{ text: system }] };
       const url = `${baseURL}/models/${model}:streamGenerateContent?alt=sse`;
-      const res = await fetchImpl(url, {
+      const res = await fetchRetry(fetchImpl, url, {
         method: "POST", signal,
         headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
         body: JSON.stringify(body),
-      });
-      if (!res.ok) { const txt = await (res.text?.() ?? Promise.resolve("")); throw new Error(`Gemini API ${res.status}: ${txt}`); }
+      }, { signal });
+      if (!res.ok) throw await httpError("Gemini", res);
 
       let stop = "STOP";
       for await (const ev of parseSSE(res)) {
