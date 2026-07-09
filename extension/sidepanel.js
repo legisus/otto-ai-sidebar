@@ -53,14 +53,17 @@ $("model").addEventListener("change", async () => {
 });
 
 // --- onboarding ---
-function currentProvider() { return PROVIDERS.find((p) => p.id === $("ob-provider").value); }
+// Fall back to the first provider so a not-yet-populated select never yields undefined.
+function currentProvider() { return PROVIDERS.find((p) => p.id === $("ob-provider").value) || PROVIDERS[0]; }
 function fillProviderSelect(selected) {
   const sel = $("ob-provider"); sel.innerHTML = "";
   for (const p of PROVIDERS) { const el = document.createElement("option"); el.value = p.id; el.textContent = p.label; sel.appendChild(el); }
-  if (selected) sel.value = selected;
+  sel.value = selected && PROVIDERS.some((p) => p.id === selected) ? selected : PROVIDERS[0].id;
 }
 function syncKeyLink() { $("getkey").href = currentProvider().keyUrl; }
 $("ob-provider").addEventListener("change", syncKeyLink);
+// Populate immediately so the select is valid before any interaction.
+fillProviderSelect(PROVIDERS[0].id); syncKeyLink();
 
 async function openOnboarding() {
   const s = await getSettings();
