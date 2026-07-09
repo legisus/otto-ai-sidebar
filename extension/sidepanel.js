@@ -70,11 +70,12 @@ async function openOnboarding() {
 }
 async function maybeOnboard() { const s = await getSettings(); if (!s.apiKeys[s.provider]) await openOnboarding(); }
 
-$("ob-test").addEventListener("click", () => {
+$("ob-test").addEventListener("click", async () => {
   const p = currentProvider(); const key = $("ob-key").value.trim();
   if (!key) { $("ob-status").textContent = "Enter a key first."; return; }
-  if (p.keyPrefixHint && !key.startsWith(p.keyPrefixHint)) { $("ob-status").textContent = `That doesn't look right — ${p.label} keys start with "${p.keyPrefixHint}".`; return; }
-  $("ob-status").textContent = "Looks valid ✓";
+  $("ob-status").textContent = "Testing…";
+  const res = await chrome.runtime.sendMessage({ type: "otto-validate", provider: p.id, endpointId: p.endpoints[0].id, key });
+  $("ob-status").textContent = res?.ok ? "Key works ✓" : `Key rejected — ${res?.error || "no response"}`;
 });
 $("ob-save").addEventListener("click", async () => {
   const p = currentProvider(); const key = $("ob-key").value.trim();

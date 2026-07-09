@@ -281,3 +281,28 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
 });
+
+// ---------- key validation (real, not prefix-guessing) ----------
+// A cheap GET /models with the provider's auth style — free, and it actually
+// verifies the key. Runs in the worker so host_permissions make it CORS-exempt.
+async function validateKey(providerId, endpointId, key) {
+  const p = PROVIDERS.find((x) => x.id === providerId);
+  const e = p?.endpoints.find((x) => x.id === endpointId) || p?.endpoints[0];
+  if (!p || !e) return { ok: false, error: "unknown provider" };
+  let headers;
+  if (p.adapter === "claude") headers = { "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" };
+  else if (p.adapter === "gemini") headers = { "x-goog-api-key": key };
+  else headers = { authorization: `Bearer ${key}` };
+  try {
+    const res = await fetch(`${e.baseURL}/models`, { headers });
+    if (res.ok) return { ok: true };
+    const txt = await res.text().catch(() => "");
+    return { ok: false, error: `${res.status}${txt ? ": " + txt.slice(0, 140) : ""}` };
+  } catch (err) { return { ok: false, error: String(err.message || err) }; }
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== "otto-validate") return;
+  validateKey(msg.provider, msg.endpointId, msg.key).then(sendResponse);
+  return true; // keep the channel open for the async response
+});
