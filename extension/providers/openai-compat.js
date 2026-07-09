@@ -1,6 +1,6 @@
 // One adapter for any OpenAI-compatible chat-completions endpoint (OpenAI, DeepSeek,
 // Mistral, Groq). Vision via image_url data-URI parts; dropped when vision=false.
-import { fetchRetry, httpError } from "./http.js";
+import { fetchRetry, httpError, sseJSON } from "./http.js";
 
 function toOpenAIMessages(messages, vision) {
   const out = [];
@@ -19,23 +19,6 @@ function toOpenAIMessages(messages, vision) {
     }
   }
   return out;
-}
-
-async function* parseSSE(res) {
-  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read(); if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
-      const line = chunk.split("\n").find(l => l.startsWith("data:"));
-      if (!line) continue;
-      const payload = line.slice(5).trim();
-      if (payload === "[DONE]") return;
-      try { yield JSON.parse(payload); } catch {}
-    }
-  }
 }
 
 export function openaiCompatAdapter({ apiKey, baseURL, name = "The model API" }) {
@@ -57,7 +40,7 @@ export function openaiCompatAdapter({ apiKey, baseURL, name = "The model API" })
 
       const acc = {};
       let stop = "stop";
-      for await (const ev of parseSSE(res)) {
+      for await (const ev of sseJSON(res)) {
         const ch = ev.choices?.[0]; if (!ch) continue;
         if (ch.delta?.content) yield { type: "text", text: ch.delta.content };
         for (const tc of ch.delta?.tool_calls ?? []) {

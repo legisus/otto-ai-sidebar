@@ -1,6 +1,6 @@
 // Maps Otto's internal message/tool format to the Anthropic Messages API and
 // normalizes the SSE stream back to Otto events. No chrome.* — fetch is injected.
-import { fetchRetry, httpError } from "./http.js";
+import { fetchRetry, httpError, sseJSON } from "./http.js";
 
 function toAnthropicMessages(messages) {
   const out = [];
@@ -16,20 +16,6 @@ function toAnthropicMessages(messages) {
     }
   }
   return out;
-}
-
-async function* parseSSE(res) {
-  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read(); if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
-      const dataLine = chunk.split("\n").find(l => l.startsWith("data:"));
-      if (dataLine) { try { yield JSON.parse(dataLine.slice(5).trim()); } catch {} }
-    }
-  }
 }
 
 export function claudeAdapter({ apiKey, baseURL }) {
@@ -55,7 +41,7 @@ export function claudeAdapter({ apiKey, baseURL }) {
       if (!res.ok) throw await httpError("Claude", res);
 
       const toolAcc = {};
-      for await (const ev of parseSSE(res)) {
+      for await (const ev of sseJSON(res)) {
         if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use")
           toolAcc[ev.index] = { id: ev.content_block.id, name: ev.content_block.name, json: "" };
         else if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta")

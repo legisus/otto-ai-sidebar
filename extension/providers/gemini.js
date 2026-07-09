@@ -1,5 +1,5 @@
 // Maps Otto internal format to Gemini generateContent and normalizes the SSE stream.
-import { fetchRetry, httpError } from "./http.js";
+import { fetchRetry, httpError, sseJSON } from "./http.js";
 
 // Gemini's function-declaration parameters use a restricted OpenAPI subset that rejects
 // `additionalProperties` (and a few other JSON-Schema keywords). Strip them recursively.
@@ -28,43 +28,39 @@ function geminiFunctionDeclarations(tools) {
   });
 }
 
-function toGeminiContents(messages, vision) {
-  const contents = [];
-  for (const m of messages) {
-    if (m.role === "user") contents.push({ role: "user", parts: [{ text: m.text }] });
-    else if (m.role === "assistant" && m.toolCalls)
-      contents.push({ role: "model", parts: m.toolCalls.map(tc => ({ functionCall: { name: tc.name, args: tc.input } })) });
-    else if (m.role === "assistant") contents.push({ role: "model", parts: [{ text: m.text }] });
-    else if (m.role === "tool") {
-      const parts = [{ functionResponse: { name: m.name, response: { result: m.content ?? "" } } }];
-      if (vision && m.image) parts.push({ inlineData: { mimeType: "image/png", data: m.image } });
-      contents.push({ role: "user", parts });
-    }
-  }
-  return contents;
-}
-
-async function* parseSSE(res) {
-  const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
-  for (;;) {
-    const { value, done } = await reader.read(); if (done) break;
-    buf += dec.decode(value, { stream: true });
-    let i;
-    while ((i = buf.indexOf("\n\n")) >= 0) {
-      const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
-      const line = chunk.split("\n").find(l => l.startsWith("data:"));
-      if (line) { try { yield JSON.parse(line.slice(5).trim()); } catch {} }
-    }
-  }
-}
-
 let seq = 0;
 export function geminiAdapter({ apiKey, baseURL }) {
+  // Thinking models attach a `thoughtSignature` to each functionCall; it must be echoed
+  // back on the next turn or the model loses its reasoning context. Keep them per adapter
+  // (one adapter instance spans a single user request's multi-turn tool loop).
+  const sigs = new Map();
+
+  function toContents(messages, vision) {
+    const contents = [];
+    for (const m of messages) {
+      if (m.role === "user") contents.push({ role: "user", parts: [{ text: m.text }] });
+      else if (m.role === "assistant" && m.toolCalls)
+        contents.push({ role: "model", parts: m.toolCalls.map((tc) => {
+          const fc = { functionCall: { name: tc.name, args: tc.input } };
+          const sig = sigs.get(tc.id); if (sig) fc.thoughtSignature = sig;
+          return fc;
+        }) });
+      else if (m.role === "assistant") contents.push({ role: "model", parts: [{ text: m.text }] });
+      else if (m.role === "tool") {
+        const parts = [{ functionResponse: { name: m.name, response: { result: m.content ?? "" } } }];
+        if (vision && m.image) parts.push({ inlineData: { mimeType: "image/png", data: m.image } });
+        contents.push({ role: "user", parts });
+      }
+    }
+    return contents;
+  }
+
   return {
     async *stream({ model, system, messages, tools, vision, fetchImpl = fetch, signal }) {
       const body = {
-        contents: toGeminiContents(messages, vision),
+        contents: toContents(messages, vision),
         tools: [{ functionDeclarations: geminiFunctionDeclarations(tools) }],
+        toolConfig: { functionCallingConfig: { mode: "AUTO" } },
       };
       if (system) body.systemInstruction = { parts: [{ text: system }] };
       const url = `${baseURL}/models/${model}:streamGenerateContent?alt=sse`;
@@ -76,11 +72,16 @@ export function geminiAdapter({ apiKey, baseURL }) {
       if (!res.ok) throw await httpError("Gemini", res);
 
       let stop = "STOP";
-      for await (const ev of parseSSE(res)) {
+      for await (const ev of sseJSON(res)) {
         const cand = ev.candidates?.[0]; if (!cand) continue;
         for (const part of cand.content?.parts ?? []) {
-          if (part.text) yield { type: "text", text: part.text };
-          else if (part.functionCall) yield { type: "toolCall", id: `gem_${part.functionCall.name}_${seq++}`, name: part.functionCall.name, input: part.functionCall.args ?? {} };
+          if (part.functionCall) {
+            const id = `gem_${part.functionCall.name}_${seq++}`;
+            if (part.thoughtSignature) sigs.set(id, part.thoughtSignature);
+            yield { type: "toolCall", id, name: part.functionCall.name, input: part.functionCall.args ?? {} };
+          } else if (part.text && !part.thought) {
+            yield { type: "text", text: part.text };
+          }
         }
         if (cand.finishReason) stop = cand.finishReason;
       }

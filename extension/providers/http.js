@@ -18,6 +18,33 @@ export async function fetchRetry(fetchImpl, url, opts, { retries = 3, signal, ba
   }
 }
 
+// Robust SSE reader: yields parsed JSON from each `data:` line. Handles both LF (\n\n,
+// Anthropic/OpenAI) and CRLF (\r\n\r\n, Gemini) delimiters, skips "[DONE]", and flushes
+// the final event even when the stream ends without a trailing blank line.
+export async function* sseJSON(res) {
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  const parseBlock = (block) => {
+    const line = block.split("\n").find((l) => l.startsWith("data:"));
+    if (!line) return undefined;
+    const p = line.slice(5).trim();
+    if (!p || p === "[DONE]") return undefined;
+    try { return JSON.parse(p); } catch { return undefined; }
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (value) buf += dec.decode(value, { stream: true });
+    buf = buf.replace(/\r\n/g, "\n");
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const block = buf.slice(0, idx); buf = buf.slice(idx + 2);
+      const obj = parseBlock(block); if (obj !== undefined) yield obj;
+    }
+    if (done) { const obj = parseBlock(buf); if (obj !== undefined) yield obj; break; }
+  }
+}
+
 export async function httpError(name, res) {
   const s = res.status;
   if (s === 429) return new Error(`${name} is rate-limited (429) — wait a moment and try again.`);
