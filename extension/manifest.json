@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Otto",
   "version": "0.2.1",
-  "description": "Otto — your browser, on autopilot. A Claude/Gemini/OpenAI-powered side-panel assistant that drives your logged-in browser. Fully in-browser: your API key, no server.",
+  "description": "Otto — your browser, on autopilot. An AI side-panel assistant that reads pages, clicks, and types for you. Your key, no server.",
   "author": "Mykola Bielousov",
   "permissions": [
     "tabs",
