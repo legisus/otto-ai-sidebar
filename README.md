@@ -75,8 +75,14 @@ Node's built-in test runner without Chrome or network.
 ## Looking for the terminal bridge?
 
 Otto used to bundle a localhost bridge for driving the browser from a terminal AI agent.
-That's now a separate project: **[ai-bridge](../ai-bridge)** (`AI Browser Bridge`). Otto
-itself is browser-only — no server.
+That's now a separate project (**AI Browser Bridge**, not yet published). Otto itself is
+browser-only — no server.
+
+## Contributing
+
+Bug reports, provider adapters, and improvements are welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for local setup, tests, commit conventions, and
+tips for developing with Claude Code.
 
 ## License
 
