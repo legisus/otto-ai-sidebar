@@ -25,6 +25,15 @@ chrome.debugger.onDetach.addListener((src) => { if (src.tabId) attached.delete(s
 chrome.tabs.onRemoved.addListener((tabId) => attached.delete(tabId));
 function dbg(tabId, method, params) { return chrome.debugger.sendCommand({ tabId }, method, params || {}); }
 
+// Detach from every tab once a run finishes, so the "Otto is debugging this
+// browser" banner only shows while Otto is actually driving.
+async function dbgDetachAll() {
+  for (const tabId of [...attached]) {
+    attached.delete(tabId);
+    await chrome.debugger.detach({ tabId }).catch(() => {});
+  }
+}
+
 async function handle(cmd, p) {
   switch (cmd) {
     case "listTabs": {
@@ -171,7 +180,7 @@ chrome.runtime.onConnect.addListener((port) => {
       port.postMessage({ type: "done", stopReason: res.stopReason });
     } catch (e) {
       port.postMessage({ type: "error", error: String(e.message || e) });
-    } finally { ac = null; }
+    } finally { ac = null; await dbgDetachAll(); }
   });
 });
 

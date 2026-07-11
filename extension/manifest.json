@@ -1,25 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Otto",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Otto — your browser, on autopilot. A Claude/Gemini/OpenAI-powered side-panel assistant that drives your logged-in browser. Fully in-browser: your API key, no server.",
   "author": "Mykola Bielousov",
   "permissions": [
     "tabs",
-    "scripting",
     "debugger",
     "downloads",
     "storage",
     "sidePanel"
   ],
   "host_permissions": [
-    "<all_urls>",
-    "https://api.anthropic.com/*",
-    "https://generativelanguage.googleapis.com/*",
-    "https://api.openai.com/*",
-    "https://api.deepseek.com/*",
-    "https://api.mistral.ai/*",
-    "https://api.groq.com/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js",
