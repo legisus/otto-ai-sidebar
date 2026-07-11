@@ -1,6 +1,6 @@
 {
   "name": "otto",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Otto — your browser, on autopilot. A Claude/Gemini/OpenAI-powered Chrome side-panel assistant that autonomously drives your logged-in browser. Fully in-browser: your API key, no server.",
   "author": "Mykola Bielousov",
   "license": "MIT",

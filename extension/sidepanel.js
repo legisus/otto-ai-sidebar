@@ -63,13 +63,17 @@ function fillProviderSelect(selected) {
   sel.value = selected && PROVIDERS.some((p) => p.id === selected) ? selected : PROVIDERS[0].id;
 }
 function syncKeyLink() { $("getkey").href = currentProvider().keyUrl; }
-$("ob-provider").addEventListener("change", syncKeyLink);
+async function syncKeyHint() {
+  const s = await getSettings();
+  $("ob-key").placeholder = s.apiKeys[currentProvider().id] ? "Key saved — leave blank to keep it" : "Paste your key";
+}
+$("ob-provider").addEventListener("change", () => { syncKeyLink(); syncKeyHint(); });
 // Populate immediately so the select is valid before any interaction.
 fillProviderSelect(PROVIDERS[0].id); syncKeyLink();
 
 async function openOnboarding() {
   const s = await getSettings();
-  fillProviderSelect(s.provider); syncKeyLink();
+  fillProviderSelect(s.provider); syncKeyLink(); await syncKeyHint();
   $("ob-key").value = ""; $("ob-status").textContent = "";
   $("onboarding").hidden = false;
 }
@@ -88,14 +92,18 @@ $("ob-test").addEventListener("click", async () => {
 });
 $("ob-save").addEventListener("click", async () => {
   const p = currentProvider(); const key = $("ob-key").value.trim();
-  if (!key) { $("ob-status").textContent = "Enter a key first."; return; }
+  const cur = await getSettings();
+  // A key already stored for this provider is kept when the field is left blank,
+  // so reopening settings never demands re-pasting the key.
+  if (!key && !cur.apiKeys[p.id]) { $("ob-status").textContent = "Enter a key first."; return; }
   const endpoint = p.endpoints[0];
   // Keep the model already chosen in the header if it belongs to this provider/endpoint;
   // otherwise default to the endpoint's first model. (Fixes the header selection resetting.)
-  const cur = await getSettings();
   const keep = findModel(p.id, endpoint.id, cur.model);
   const model = keep ? cur.model : endpoint.models[0].id;
-  await setSettings({ provider: p.id, endpoint: endpoint.id, model, apiKeys: { [p.id]: key } });
+  const patch = { provider: p.id, endpoint: endpoint.id, model };
+  if (key) patch.apiKeys = { [p.id]: key };
+  await setSettings(patch);
   $("onboarding").hidden = true;
   await refreshHeader();
   await refreshStatus();

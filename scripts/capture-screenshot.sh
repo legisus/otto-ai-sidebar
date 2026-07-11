@@ -5,7 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 NAME="${1:?usage: capture-screenshot.sh <name>}"
-OUT="docs/store-assets/screenshot-$NAME.png"
-screencapture -x -R40,40,1280,800 "$OUT"
-sips -z 800 1280 "$OUT" >/dev/null
+OUT="docs/store-assets/screenshot-$NAME.jpg"
+# JPEG: the store requires no alpha channel, which macOS PNG captures include.
+screencapture -x -t jpg -R40,40,1280,800 "$OUT"
+sips -z 800 1280 -s formatOptions 92 "$OUT" >/dev/null
 sips -g pixelWidth -g pixelHeight "$OUT"
