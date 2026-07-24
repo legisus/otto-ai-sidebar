@@ -1,6 +1,6 @@
 # Otto — Privacy Policy
 
-*Last updated: July 10, 2026*
+*Last updated: July 23, 2026*
 
 Otto is a browser extension that lets you chat with an AI assistant which operates your
 browser on your behalf. Otto is designed so that **the developer never receives any of
@@ -8,19 +8,19 @@ your data**. There is no Otto server.
 
 ## What Otto stores, and where
 
-- **Your API keys** (Anthropic, Google, OpenAI, DeepSeek, Mistral, or Groq) are stored
-  only in your browser's local extension storage (`chrome.storage.local`) on your
-  device. They are sent only to the API endpoint of the provider you selected, solely
-  to authenticate your requests. They are never sent anywhere else, never logged, and
-  never leave your machine otherwise.
+- **Your API keys** for the AI provider you configure are stored only in your
+  browser's local extension storage (`chrome.storage.local`) on your device. They are
+  sent only to the API endpoint of the provider you selected, solely to authenticate
+  your requests. They are never sent anywhere else, never logged, and never leave your
+  machine otherwise.
 - **Your conversations** are held in memory for the duration of a chat session and are
   not persisted after the side panel is closed.
 
 ## What Otto sends, and to whom
 
-When you give Otto a task, the following is sent **only to the LLM provider you chose**
-(e.g. `api.anthropic.com`, `generativelanguage.googleapis.com`, `api.openai.com`,
-`api.deepseek.com`, `api.mistral.ai`, or `api.groq.com`):
+When you give Otto a task, the following is sent **only to the official API endpoint
+of the AI provider you chose in settings** (the current provider list is in the
+README):
 
 - your chat messages;
 - content of web pages Otto reads while performing your task (text, page structure);
