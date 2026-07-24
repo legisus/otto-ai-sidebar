@@ -28,15 +28,15 @@ Build the upload zip with `npm run package`.
 > back in chat. You can stop it at any moment, and Chrome shows a visible banner
 > whenever Otto is controlling a tab.
 >
-> Bring your own AI: Otto calls the LLM provider YOU choose — Anthropic (Claude),
-> Google (Gemini), OpenAI, DeepSeek, Mistral, or Groq — directly from your browser
-> with YOUR API key. There is no Otto server, no account, no subscription, no
-> analytics, and no data collection by the developer. Your key is stored only in
-> Chrome's local extension storage and sent only to the provider you picked.
+> Bring your own AI: Otto connects directly from your browser to the AI provider you
+> choose, using your own API key. There is no Otto server, no account, no
+> subscription, no analytics, and no data collection by the developer. Your key is
+> stored only in Chrome's local extension storage and sent only to the provider you
+> picked.
 >
-> Note: Otto requires an API key from one of the supported providers (pay-per-token;
-> Gemini has a free tier). A ChatGPT/Claude/Gemini consumer subscription does not
-> include API access.
+> Note: Otto requires an API key from a supported AI provider (pay-per-token; some
+> providers have free tiers). A consumer chatbot subscription does not include API
+> access. The full list of supported providers is in the README on GitHub.
 >
 > Otto is fully open source: https://github.com/legisus/otto-ai-sidebar
 
@@ -54,7 +54,11 @@ Build the upload zip with `npm run package`.
 
 Paste each into the corresponding field in the "Privacy practices" tab.
 
-### `debugger` — the core permission (full justification)
+### `debugger` — paste-ready version (983 chars; the form caps fields at 1000)
+
+> Otto's single purpose is to let an AI assistant operate the user's browser to complete tasks typed in the side-panel chat. The DevTools Protocol (chrome.debugger) is the only extension API able to do this on real sites. Four functions: (1) TRUSTED INPUT (Input.dispatchMouseEvent/dispatchKeyEvent/insertText): Gmail, Google Docs, rich editors and login/checkout flows ignore synthetic DOM events; only debugger input yields isTrusted events, so without it "click send in Gmail" cannot work. (2) SCREENSHOTS OF BACKGROUND TABS (Page.captureScreenshot): Otto works in background tabs so it never steals focus; captureVisibleTab cannot capture them. (3) PAGE READING (Runtime.evaluate), works on CSP-strict pages. (4) SAVE AS PDF (Page.printToPDF), no extension-API equivalent. Otto attaches only during a user-requested task and detaches when it ends, so the debugging banner shows exactly while it drives; Stop aborts instantly. Open source: https://github.com/legisus/otto-ai-sidebar
+
+### `debugger` — the core permission (full justification, >1000 chars — reference only)
 
 > Otto's single purpose is to act as an autonomous browsing assistant: the user types a
 > task, and the assistant operates the browser to complete it. The Chrome DevTools
@@ -145,8 +149,7 @@ the user's chosen AI provider). Then certify:
 
 In the free-text disclosure, state: *"Page content, screenshots, and chat messages are
 sent exclusively to the AI provider the user selects and configures with their own API
-key (Anthropic, Google, OpenAI, DeepSeek, Mistral, or Groq). The developer operates no
-servers and receives no user data whatsoever."*
+key. The developer operates no servers and receives no user data whatsoever."*
 
 ---
 
